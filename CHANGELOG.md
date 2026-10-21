@@ -4,14 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
-## [Unreleased]
+## [1.2.1] - 2026-10-21
 
 ### Added
 
 - `keel:make:check` and `keel:make:authenticator` generators; `keel:routes` shows `#[Auth]` roles
   and `#[RateLimit]` settings.
 - Mutation testing (Infection) now covers `Keel\Auth`, `Keel\RateLimit`, `Keel\Health` and
-  `Keel\Metrics` in CI.
+  `Keel\Metrics` in CI (MSI 90%); the security suites count towards coverage.
+
+### Changed
+
+- `HealthMiddleware` computes the overall status without an ordering helper; `ApiKeyAuthenticator`
+  no longer trims the header (PSR-7 does); `InMemoryCounters` accepts a `ClockInterface`.
 
 ## [1.2.0] - 2026-10-21
 
