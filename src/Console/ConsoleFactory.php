@@ -8,6 +8,8 @@ use Keel\App\App;
 use Keel\Console\Command\CacheClearCommand;
 use Keel\Console\Command\CompileCommand;
 use Keel\Console\Command\DebugContainerCommand;
+use Keel\Console\Command\MakeAuthenticatorCommand;
+use Keel\Console\Command\MakeCheckCommand;
 use Keel\Console\Command\MakeCommandCommand;
 use Keel\Console\Command\MakeControllerCommand;
 use Keel\Console\Command\MakeListenerCommand;
@@ -45,6 +47,8 @@ final class ConsoleFactory
             new MakeCommandCommand($app),
             new MakeMiddlewareCommand($app),
             new MakeListenerCommand($app),
+            new MakeCheckCommand($app),
+            new MakeAuthenticatorCommand($app),
         ]);
         $console->setCommandLoader(new ContainerCommandLoader($app->container, $app->commands()));
 

@@ -3,7 +3,7 @@ name: Mutation testing
 on:
   push:
     branches: [main]
-    paths: ['src/Container/**', 'src/Routing/**', 'tests/**', 'infection.json5', '.github/workflows/mutation.yml']
+    paths: ['src/Container/**', 'src/Routing/**', 'src/Auth/**', 'src/RateLimit/**', 'src/Health/**', 'src/Metrics/**', 'tests/**', 'infection.json5', '.github/workflows/mutation.yml']
   workflow_dispatch:
 
 jobs:

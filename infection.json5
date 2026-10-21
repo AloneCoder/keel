@@ -1,7 +1,7 @@
 {
     "$schema": "vendor/infection/infection/resources/schema.json",
     "source": {
-        "directories": ["src/Container", "src/Routing"]
+        "directories": ["src/Container", "src/Routing", "src/Auth", "src/RateLimit", "src/Health", "src/Metrics"]
     },
     "timeout": 20,
     "logs": {

@@ -47,6 +47,8 @@ final class ConsoleTest extends TestCase
         self::assertStringContainsString('/greet/{name}', $display);
         self::assertStringContainsString('greet', $display);
         self::assertStringContainsString('GreetController::greet', $display);
+        self::assertStringContainsString('AuthGuard, RateLimitGuard', $display);
+        self::assertMatchesRegularExpression('/\/admin.*\badmin\b.*50\/60s ip/', $display, 'auth roles and rate limit columns');
     }
 
     public function testCompileAndCacheClear(): void

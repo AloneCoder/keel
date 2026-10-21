@@ -29,11 +29,38 @@ final class RoutesCommand extends Command
                 $route->name ?? '',
                 $route->handler[0] . '::' . $route->handler[1],
                 implode(', ', array_map(static fn(string $m): string => substr($m, (int) strrpos($m, '\\') + 1), $route->middleware)),
+                self::auth($route->option('auth')),
+                self::rateLimit($route->option('rate_limit')),
             ];
         }
 
-        new Table($output)->setHeaders(['Method', 'Path', 'Name', 'Handler', 'Middleware'])->setRows($rows)->render();
+        new Table($output)->setHeaders(['Method', 'Path', 'Name', 'Handler', 'Middleware', 'Auth', 'Rate limit'])->setRows($rows)->render();
 
         return Command::SUCCESS;
+    }
+
+    private static function auth(mixed $option): string
+    {
+        if (!is_array($option)) {
+            return '';
+        }
+        $roles = $option['roles'] ?? [];
+        $names = [];
+        foreach (is_array($roles) ? $roles : [] as $role) {
+            if (is_string($role)) {
+                $names[] = $role;
+            }
+        }
+
+        return $names === [] ? 'yes' : implode('|', $names);
+    }
+
+    private static function rateLimit(mixed $option): string
+    {
+        if (!is_array($option) || !is_int($option['limit'] ?? null) || !is_int($option['window'] ?? null)) {
+            return '';
+        }
+
+        return sprintf('%d/%ds %s', $option['limit'], $option['window'], is_string($option['by'] ?? null) ? $option['by'] : 'ip');
     }
 }
