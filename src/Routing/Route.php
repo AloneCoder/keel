@@ -6,6 +6,8 @@ namespace Keel\Routing;
 
 /**
  * One declared route: an HTTP method set, a path pattern and a controller method.
+ *
+ * @phpstan-type RouteArray array{path: string, methods: list<string>, handler: array{0: class-string, 1: string}, name: string|null, middleware: list<class-string<\Psr\Http\Server\MiddlewareInterface>>, status: int|null, options?: array<string, mixed>}
  */
 final readonly class Route
 {
@@ -14,6 +16,7 @@ final readonly class Route
      * @param array{0: class-string, 1: string}  $handler    controller class and method
      * @param list<class-string<\Psr\Http\Server\MiddlewareInterface>>                 $middleware route-specific PSR-15 middleware
      * @param int|null                           $status     response status from #[Status]
+     * @param array<string, mixed>               $options    values of RouteOption attributes, by key
      */
     public function __construct(
         public string $path,
@@ -22,10 +25,19 @@ final readonly class Route
         public ?string $name = null,
         public array $middleware = [],
         public ?int $status = null,
+        public array $options = [],
     ) {}
 
     /**
-     * @return array{path: string, methods: list<string>, handler: array{0: class-string, 1: string}, name: string|null, middleware: list<class-string<\Psr\Http\Server\MiddlewareInterface>>, status: int|null}
+     * The value of a RouteOption attribute, or null when the route has none with that key.
+     */
+    public function option(string $key): mixed
+    {
+        return $this->options[$key] ?? null;
+    }
+
+    /**
+     * @return RouteArray
      */
     public function toArray(): array
     {
@@ -36,11 +48,12 @@ final readonly class Route
             'name' => $this->name,
             'middleware' => $this->middleware,
             'status' => $this->status,
+            'options' => $this->options,
         ];
     }
 
     /**
-     * @param array{path: string, methods: list<string>, handler: array{0: class-string, 1: string}, name: string|null, middleware: list<class-string<\Psr\Http\Server\MiddlewareInterface>>, status: int|null} $data
+     * @param RouteArray $data
      */
     public static function fromArray(array $data): self
     {
@@ -51,6 +64,7 @@ final readonly class Route
             $data['name'],
             $data['middleware'],
             $data['status'],
+            $data['options'] ?? [],
         );
     }
 }

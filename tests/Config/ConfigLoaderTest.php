@@ -26,7 +26,8 @@ final class ConfigLoaderTest extends TestCase
         self::assertSame('test', $configs[AppConfig::class]->env);
         self::assertSame($project, $configs[AppConfig::class]->projectDir);
         self::assertInstanceOf(HttpConfig::class, $configs[HttpConfig::class]);
-        self::assertSame([StampMiddleware::class], $configs[HttpConfig::class]->middleware);
+        self::assertSame(StampMiddleware::class, $configs[HttpConfig::class]->middleware[0]);
+        self::assertCount(5, $configs[HttpConfig::class]->middleware);
         self::assertInstanceOf(GreetingConfig::class, $configs[GreetingConfig::class]);
         self::assertSame('Hi', $configs[GreetingConfig::class]->prefix);
     }

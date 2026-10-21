@@ -9,7 +9,7 @@ namespace Keel\Routing\Attribute;
  * Class-level middleware runs before method-level middleware.
  */
 #[\Attribute(\Attribute::TARGET_CLASS | \Attribute::TARGET_METHOD | \Attribute::IS_REPEATABLE)]
-final readonly class Middleware
+final readonly class Middleware implements MiddlewareProvider
 {
     /** @var list<class-string<\Psr\Http\Server\MiddlewareInterface>> */
     public array $classes;
@@ -20,5 +20,10 @@ final readonly class Middleware
     public function __construct(string ...$classes)
     {
         $this->classes = array_values($classes);
+    }
+
+    public function middleware(): array
+    {
+        return $this->classes;
     }
 }

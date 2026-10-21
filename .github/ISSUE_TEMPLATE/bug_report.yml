@@ -1,0 +1,33 @@
+name: Bug report
+description: Something behaves differently from the documentation
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Keel version
+      placeholder: "1.1.0"
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: PHP version and runtime
+      placeholder: "PHP 8.4.21, FrankenPHP 1.9 worker mode"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: What you did, what you expected, what you got instead. Include the Problem Details body or the stack trace when there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: A controller, a config file and a request, or a failing PHPUnit test against the kernel.
+      render: php
+    validations:
+      required: true

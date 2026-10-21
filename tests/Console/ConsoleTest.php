@@ -8,8 +8,10 @@ use Keel\App\App;
 use Keel\Config\Env;
 use Keel\Console\Command\CacheClearCommand;
 use Keel\Console\Command\CompileCommand;
+use Keel\Console\Command\OpenApiCommand;
 use Keel\Console\Command\PreloadCommand;
 use Keel\Console\Command\RoutesCommand;
+use Keel\Console\Command\ServeCommand;
 use Keel\Console\ConsoleFactory;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -20,6 +22,8 @@ use Symfony\Component\Console\Tester\ApplicationTester;
 #[CoversClass(CacheClearCommand::class)]
 #[CoversClass(RoutesCommand::class)]
 #[CoversClass(PreloadCommand::class)]
+#[CoversClass(OpenApiCommand::class)]
+#[CoversClass(ServeCommand::class)]
 final class ConsoleTest extends TestCase
 {
     private ApplicationTester $tester;
@@ -80,5 +84,48 @@ final class ConsoleTest extends TestCase
     {
         self::assertSame(0, $this->tester->run(['command' => 'demo:hello']));
         self::assertStringContainsString('Hi from the command', $this->tester->getDisplay());
+    }
+
+    public function testOpenApiCommandPrintsOrWritesTheDocument(): void
+    {
+        self::assertSame(0, $this->tester->run(['command' => 'keel:openapi']));
+        $document = json_decode($this->tester->getDisplay(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($document);
+        self::assertSame(['title' => 'Fixture API', 'version' => '0.1.0'], $document['info'] ?? null);
+        self::assertIsArray($document['paths'] ?? null);
+        self::assertArrayHasKey('/greet/{name}', $document['paths']);
+
+        $file = $this->cacheDir . '/spec/openapi.json';
+        self::assertSame(0, $this->tester->run(['command' => 'keel:openapi', '--output' => $file]));
+        self::assertStringContainsString('written', $this->tester->getDisplay());
+        self::assertFileExists($file);
+        self::assertStringContainsString('"openapi": "3.1.0"', (string) file_get_contents($file));
+    }
+
+    public function testServeCommandBuildsTheCommandLine(): void
+    {
+        $php = (string) ServeCommand::command('/app', 'public', '127.0.0.1', '8080', false, false, false);
+        self::assertStringContainsString("-S '127.0.0.1:8080' -t '/app/public' '/app/public/index.php'", $php);
+
+        putenv('FRANKENPHP_BINARY=' . \PHP_BINARY);
+        try {
+            $worker = ServeCommand::command('/app/', 'web', '0.0.0.0', '80', true, true, true);
+            self::assertNotNull($worker);
+            self::assertStringContainsString("php-server --no-compress --root '/app/web' --listen '0.0.0.0:80' --worker '/app/web/index.php'", $worker);
+            self::assertStringContainsString("--watch='/app/src/**/*.php'", $worker);
+            self::assertStringContainsString("--watch='/app/.env'", $worker);
+            self::assertStringNotContainsString('--worker', (string) ServeCommand::command('/app', 'public', 'h', '1', true, false, false));
+        } finally {
+            putenv('FRANKENPHP_BINARY');
+        }
+
+        putenv('FRANKENPHP_BINARY=/nonexistent/frankenphp');
+        putenv('PATH=/nonexistent');
+        try {
+            self::assertNull(ServeCommand::command('/app', 'public', 'h', '1', true, false, false));
+        } finally {
+            putenv('FRANKENPHP_BINARY');
+            putenv('PATH=' . (getenv('PATH') ?: '/usr/bin:/bin'));
+        }
     }
 }

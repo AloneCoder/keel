@@ -10,12 +10,15 @@ use Keel\Discovery\Discoverer;
 use Keel\Discovery\ListenerDiscovery;
 use Keel\Discovery\RouteDiscovery;
 use Keel\Discovery\ServiceDiscovery;
+use Keel\Tests\App\Fixtures\Project\Src\AdminController;
+use Keel\Tests\App\Fixtures\Project\Src\ApiTokens;
 use Keel\Tests\App\Fixtures\Project\Src\Circle;
 use Keel\Tests\App\Fixtures\Project\Src\Color;
 use Keel\Tests\App\Fixtures\Project\Src\GreetController;
 use Keel\Tests\App\Fixtures\Project\Src\Greeted;
 use Keel\Tests\App\Fixtures\Project\Src\GreetingLog;
 use Keel\Tests\App\Fixtures\Project\Src\HelloCommand;
+use Keel\Tests\App\Fixtures\Project\Src\PingCheck;
 use Keel\Tests\App\Fixtures\Project\Src\Shape;
 use Keel\Tests\App\Fixtures\Project\Src\Square;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -68,8 +71,8 @@ final class DiscoveryTest extends TestCase
         $discoverer = self::discoverer(null);
 
         self::assertFalse($discoverer->run());
-        self::assertSame([GreetController::class], $discoverer->get(RouteDiscovery::class)->controllers());
-        self::assertSame([Circle::class, GreetingLog::class, Square::class], $discoverer->get(ServiceDiscovery::class)->services());
+        self::assertSame([AdminController::class, GreetController::class], $discoverer->get(RouteDiscovery::class)->controllers());
+        self::assertSame([ApiTokens::class, Circle::class, GreetingLog::class, PingCheck::class, Square::class], $discoverer->get(ServiceDiscovery::class)->services());
         self::assertSame([[GreetingLog::class, 'onGreeted', Greeted::class, 0]], $discoverer->get(ListenerDiscovery::class)->listeners());
         self::assertSame(['demo:hello' => HelloCommand::class], $discoverer->get(CommandDiscovery::class)->commands());
         self::assertTrue(enum_exists(Color::class));
@@ -84,7 +87,7 @@ final class DiscoveryTest extends TestCase
 
         $second = self::discoverer($cache);
         self::assertTrue($second->run(), 'second run restores from cache');
-        self::assertSame([GreetController::class], $second->get(RouteDiscovery::class)->controllers());
+        self::assertSame([AdminController::class, GreetController::class], $second->get(RouteDiscovery::class)->controllers());
         self::assertSame(['demo:hello' => HelloCommand::class], $second->get(CommandDiscovery::class)->commands());
 
         // Tamper with the cache: production trusts it, development notices the stale metadata.

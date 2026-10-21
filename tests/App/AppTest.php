@@ -10,6 +10,7 @@ use Keel\Config\AppConfig;
 use Keel\Config\Env;
 use Keel\Container\Compiled\AbstractCompiledContainer;
 use Keel\Container\Container;
+use Keel\Testing\TestClient;
 use Keel\Tests\App\Fixtures\Project\Src\GreetingConfig;
 use Keel\Tests\App\Fixtures\Project\Src\GreetingLogInterface;
 use Nyholm\Psr7\ServerRequest;
@@ -43,7 +44,7 @@ final class AppTest extends TestCase
         self::assertSame($this->cacheDir, $app->config->cacheDir());
         self::assertSame('Hi', $app->container->get(GreetingConfig::class)->prefix);
         self::assertSame($app->env, $app->container->get(Env::class));
-        self::assertSame(['Keel\Tests\App\Fixtures\Project\Src\GreetController'], $app->controllers());
+        self::assertSame(['Keel\Tests\App\Fixtures\Project\Src\AdminController', 'Keel\Tests\App\Fixtures\Project\Src\GreetController'], $app->controllers());
 
         $response = $app->kernel->handle(new ServerRequest('GET', '/greet/Ann'));
         $app->kernel->handle(new ServerRequest('GET', '/greet/Bob'));
@@ -70,6 +71,7 @@ final class AppTest extends TestCase
         self::assertInstanceOf(AbstractCompiledContainer::class, $second->container);
         self::assertSame(200, $second->kernel->handle(new ServerRequest('GET', '/greet/Yan'))->getStatusCode());
 
+        $this->assertOperationalEndpoints($second);
         self::assertCount(3, $second->compile());
         self::assertCount(3, $second->clearCache());
         self::assertSame([], $second->clearCache());
@@ -90,5 +92,29 @@ final class AppTest extends TestCase
         self::assertSame(404, $app->kernel->handle(new ServerRequest('GET', '/'))->getStatusCode());
         self::assertInstanceOf(AppConfig::class, $app->configs[AppConfig::class]);
         $app->clearCache();
+    }
+
+    /**
+     * Health, metrics, OpenAPI and auth wired through config/*.php, on the compiled container.
+     */
+    private function assertOperationalEndpoints(App $app): void
+    {
+        $client = TestClient::forApp($app);
+
+        $client->get('/health')->assertOk()->assertJson(['status' => 'up', 'checks' => ['ping' => ['status' => 'up', 'detail' => 'pong']]]);
+        $client->get('/health/live')->assertOk();
+
+        $client->get('/admin')->assertProblem(401)->assertHeader('WWW-Authenticate', 'Bearer realm="api"');
+        $client->get('/admin', ['Authorization' => 'Bearer secret'])->assertOk()->assertJson(['admin' => 'alice'])->assertHeader('RateLimit-Limit', '50');
+
+        $spec = $client->get('/openapi.json')->assertOk();
+        $spec->assertJsonPath('info.title', 'Fixture API');
+        $spec->assertJsonPath('paths./admin.get.security', [['bearer' => []]]);
+        self::assertIsArray($spec->jsonPath('paths./greet/{name}'));
+        $client->get('/docs')->assertOk()->assertBodyContains('data-url="/openapi.json"');
+
+        $metrics = $client->get('/metrics')->assertOk()->body();
+        self::assertStringContainsString('http_requests_total{method="GET",route="/admin",status="200"} 1', $metrics);
+        self::assertStringContainsString('http_requests_total{method="GET",route="/admin",status="401"} 1', $metrics);
     }
 }

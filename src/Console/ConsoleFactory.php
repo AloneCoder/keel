@@ -12,8 +12,10 @@ use Keel\Console\Command\MakeCommandCommand;
 use Keel\Console\Command\MakeControllerCommand;
 use Keel\Console\Command\MakeListenerCommand;
 use Keel\Console\Command\MakeMiddlewareCommand;
+use Keel\Console\Command\OpenApiCommand;
 use Keel\Console\Command\PreloadCommand;
 use Keel\Console\Command\RoutesCommand;
+use Keel\Console\Command\ServeCommand;
 use Keel\Keel;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\CommandLoader\ContainerCommandLoader;
@@ -37,6 +39,8 @@ final class ConsoleFactory
             new RoutesCommand($app->router),
             new PreloadCommand($app),
             new DebugContainerCommand($app),
+            new OpenApiCommand($app),
+            new ServeCommand($app),
             new MakeControllerCommand($app),
             new MakeCommandCommand($app),
             new MakeMiddlewareCommand($app),

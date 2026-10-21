@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a change to the framework
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      description: How you would like to use it, as code. Keep the 1.x API compatibility rules of docs/en/api.md in mind.
+      render: php
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What you tried instead (middleware, a service provider, a package on top of Keel) and why it is not enough.
