@@ -50,6 +50,12 @@ Prod-старт с готовыми кэшами загружает около 3
   останавливает воркер; `Kernel::handle()` сам никогда не бросает.
 - `MAX_REQUESTS` — страховка от утечек памяти в сторонних библиотеках: воркер завершится, и
   FrankenPHP/RoadRunner поднимут новый.
+- `MemoryGuard` — вторая страховка: после каждого запроса рантаймы сравнивают память процесса
+  (`memory_get_usage(true)`) с `KEEL_MAX_MEMORY` (байты или `256M`), по умолчанию 90% от
+  `memory_limit`; выше лимита воркер пишет предупреждение с цифрами и останавливается, вместо
+  того чтобы упасть посреди запроса с «Allowed memory size exhausted». `KEEL_MAX_MEMORY=0`
+  выключает проверку. `MetricsMiddleware` отдаёт то же число как gauge `process_memory_bytes`, а
+  `keel:doctor` показывает, какие лимиты есть у воркера.
 
 Пример `examples/hello`: маршрут `/stats` показывает `request_hits` (всегда 1, сервис
 `Resettable`) и `worker_hits` (растёт в worker-режиме, 1 под php-fpm).

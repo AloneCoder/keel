@@ -127,3 +127,23 @@ The file is written atomically (temporary file + `rename`).
   true for the requested id;
 - `CircularDependencyException`: a cycle without a lazy link; the message lists the whole chain;
 - `ContainerException`: everything else; the message includes the resolution chain when there is one.
+
+A missing dependency carries its diagnosis as well: `$dependency`, `$reason` (not registered,
+autowiring disabled, an interface or abstract class, a non-public constructor), `$autowire` and
+`$chain`, and `report()` lays them out for a console, which is what `keel:compile` and
+`keel:doctor` print:
+
+```
+Cannot resolve service App\Service\OrderService
+
+Dependency: App\Repository\OrderRepository
+Reason: autowiring is disabled and the class is not registered
+Autowiring: disabled
+
+Resolution path:
+App\Controller\OrderController -> App\Service\OrderService -> App\Repository\OrderRepository
+```
+
+`new Diagnostics($definitions, $autowire)->check()` runs the same resolution for every registered
+service, alias and tag without instantiating anything and returns one such exception per problem;
+`keel:doctor` and a test on your `Definitions` can fail before the first request does.

@@ -11,6 +11,9 @@ namespace Keel\Routing;
  */
 final readonly class Route
 {
+    /** A placeholder with an optional constraint whose regex may nest one level of braces ("{year:\d{4}}"). */
+    public const string PLACEHOLDER = '~\{([a-zA-Z_][a-zA-Z0-9_]*)(?::((?:[^{}]|\{(?-1)\})*))?\}~';
+
     /**
      * @param list<string>                       $methods
      * @param array{0: class-string, 1: string}  $handler    controller class and method
@@ -31,6 +34,15 @@ final readonly class Route
     /**
      * The value of a RouteOption attribute, or null when the route has none with that key.
      */
+    /**
+     * The path with every placeholder stripped of its constraint: "/users/{id:\d+}" becomes
+     * "/users/{id}", the form OpenAPI and tracing name a route by.
+     */
+    public function template(): string
+    {
+        return (string) preg_replace(self::PLACEHOLDER, '{$1}', $this->path);
+    }
+
     public function option(string $key): mixed
     {
         return $this->options[$key] ?? null;

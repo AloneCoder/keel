@@ -72,6 +72,26 @@ integer», а не молча обрезанное значение. Члены 
 отражает `int|string` как `string|int`): для `int|string` значение `"42"` станет `42`, а `"x"`
 останется строкой.
 
+## Пагинация
+
+`#[FromQuery] PageRequest $page` читает `?page=3&perPage=50` (по умолчанию 1 и 20, `perPage` не
+больше 100; выход за границы — 400, как у любого query-DTO); `offset()` и `limit()` идут в запрос
+к хранилищу. Верните `Page`, и ответом будет конверт
+`{"items": [...], "page": 3, "perPage": 50, "total": 93, "pages": 2}`:
+
+```php
+/** @return Page<UserView> */
+#[Get('/users')]
+public function list(#[FromQuery] PageRequest $page): Page
+{
+    return Page::of($this->users->slice($page->offset(), $page->limit()), $page, $this->users->count());
+}
+```
+
+`@return Page<UserView>` (или `#[Response(200, type: Page::class, items: UserView::class)]`) даёт
+документу OpenAPI тип элементов. Чтобы изменить умолчания или верхнюю границу, унаследуйте
+`PageRequest` со своим конструктором.
+
 ## Ответы
 
 `Responder::respond($result, ?int $status)`:

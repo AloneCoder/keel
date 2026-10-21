@@ -120,14 +120,20 @@ final class Instantiator
     }
 
     /**
-     * @return array{0: \ReflectionFunctionAbstract, 1: \Closure(list<mixed>): mixed}
+     * Reflects the factory of a definition: the function or method to call and, for an instance
+     * method, the class of the owner the container must provide (null when the owner is a bound
+     * object or the factory is static). Shared with Diagnostics, which never calls anything.
+     *
+     * @return array{0: \ReflectionFunctionAbstract, 1: string|null}
+     *
+     * @throws ContainerException for a factory that does not exist, is not callable or is not public
      */
-    private function factoryCallable(Definition $definition, ContainerInterface $container): array
+    public static function factoryFunction(Definition $definition): array
     {
         $factory = $definition->factory;
 
         if ($factory instanceof \Closure) {
-            return [new \ReflectionFunction($factory), static fn(array $args): mixed => $factory(...$args)];
+            return [new \ReflectionFunction($factory), null];
         }
 
         if (is_string($factory)) {
@@ -135,7 +141,7 @@ final class Instantiator
                 [$class, $method] = explode('::', $factory, 2);
                 $factory = [$class, $method];
             } elseif (function_exists($factory)) {
-                return [new \ReflectionFunction($factory), static fn(array $args): mixed => $factory(...$args)];
+                return [new \ReflectionFunction($factory), null];
             } else {
                 throw new ContainerException(sprintf('Factory "%s" of "%s" is not callable', $factory, $definition->id));
             }
@@ -156,13 +162,32 @@ final class Instantiator
         if (!$reflection->isPublic()) {
             throw new ContainerException(sprintf('Factory %s::%s of "%s" must be public', $class, $method, $definition->id));
         }
+
+        return [$reflection, $reflection->isStatic() || is_object($target) ? null : $class];
+    }
+
+    /**
+     * @return array{0: \ReflectionFunctionAbstract, 1: \Closure(list<mixed>): mixed}
+     */
+    private function factoryCallable(Definition $definition, ContainerInterface $container): array
+    {
+        [$reflection, $ownerClass] = self::factoryFunction($definition);
+        $factory = $definition->factory;
+
+        if ($reflection instanceof \ReflectionFunction) {
+            return [$reflection, static fn(array $args): mixed => $reflection->invokeArgs($args)];
+        }
+
+        if (!$reflection instanceof \ReflectionMethod) {
+            throw new ContainerException(sprintf('Unsupported factory for "%s"', $definition->id));
+        }
         if ($reflection->isStatic()) {
             return [$reflection, static fn(array $args): mixed => $reflection->invokeArgs(null, $args)];
         }
 
-        $object = is_object($target) ? $target : $container->get($class);
+        $object = is_array($factory) && is_object($factory[0]) ? $factory[0] : $container->get((string) $ownerClass);
         if (!is_object($object)) {
-            throw new ContainerException(sprintf('Factory owner "%s" of "%s" is not an object', $class, $definition->id));
+            throw new ContainerException(sprintf('Factory owner "%s" of "%s" is not an object', (string) $ownerClass, $definition->id));
         }
 
         return [$reflection, static fn(array $args): mixed => $reflection->invokeArgs($object, $args)];

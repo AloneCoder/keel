@@ -41,6 +41,7 @@ Scalar с jsDelivr, закреплённый на версии; через `docs
 | параметр конструктора DTO | свойство с типом из сигнатуры: скаляры, nullable (`type: [string, null]`), union (`oneOf`), backed и unit enum (`enum`), вложенные DTO (`$ref`), `DateTimeInterface` (`date-time`), массивы с типом элементов из `@param list<Item>` или `#[Field(items:)]` |
 | правило валидации | `Length` → `minLength`/`maxLength`, `Range` → `minimum`/`maximum`, `Count` → `minItems`/`maxItems`, `Pattern` → `pattern`, `Email` → `format: email`, `Url` → `format: uri`, `Choice` → `enum`, `NotBlank` → required |
 | `#[Status(201)]` и тип возврата | успешный ответ: DTO → `$ref`, `list<Dto>` из `@return` → массив `$ref`, `string` → `text/html`, `void`/`null` → 204, `ResponseInterface` → без схемы |
+| возврат `Page` | конверт пагинации (`items`, `page`, `perPage`, `total`, `pages`) с типом элементов из `@return Page<Dto>` или `#[Response(type: Page::class, items: Dto::class)]` |
 | `#[Auth]` | `security` со схемой каждого настроенного аутентификатора, плюс 401 (и 403 при ролях) |
 | `#[RateLimit]` | ответ 429 |
 | есть тело или параметры | ответ 400 со схемой `Problem` |

@@ -65,6 +65,7 @@ http_requests_total{method="GET",route="/users/{id}",status="200"} 42
 http_request_duration_seconds_bucket{method="GET",route="/users/{id}",le="0.01"} 40
 http_request_duration_seconds_count{method="GET",route="/users/{id}"} 42
 http_request_duration_seconds_sum{method="GET",route="/users/{id}"} 0.3123
+process_memory_bytes 35651584
 ```
 
 The `route` label is the route pattern, so cardinality stays bounded; requests matching no route
@@ -109,6 +110,35 @@ process (one worker's view). Values are integers internally; gauges and histogra
 by 10⁶, which keeps APCu's atomic increments usable for durations and caps a single gauge or sum
 at about ±9.2·10¹² (larger values are clamped). Register an implementation under
 `MetricsStorage` for anything else.
+
+## Tracing (OpenTelemetry)
+
+`Keel\Telemetry\TracingMiddleware` starts one server span per request: named `GET /users/{id}`
+(the route pattern, the method alone when nothing matched), kind `SERVER`, with the HTTP semantic
+attributes (`http.request.method`, `url.path`, `url.query`, `url.scheme`, `server.address`,
+`http.route`, `user_agent.original`, `client.address`, `keel.request_id`,
+`http.response.status_code`). An incoming `traceparent` header continues the caller's trace
+(W3C Trace Context; pass another `TextMapPropagatorInterface` to change that). A 5xx answer or an
+exception marks the span as an error and records the exception; a 404 or 400 does not. The span is
+active while the handler runs, so spans you start through the tracer become its children, and
+`TracingMiddleware::span($request)` returns it for events and attributes of your own.
+
+It needs `open-telemetry/api` and a `TracerProviderInterface` in the container, which is where
+the SDK and the exporter live (`composer require open-telemetry/sdk` plus an exporter such as
+`open-telemetry/exporter-otlp`):
+
+```php
+// config/services.php, a provider
+$definitions->instance(TracerProviderInterface::class, TracerProvider::builder()
+    ->addSpanProcessor(new BatchSpanProcessor($exporter, ClockFactory::getDefault()))
+    ->build());
+
+// config/http.php
+return new HttpConfig([RequestIdMiddleware::class, TracingMiddleware::class, /* ... */]);
+```
+
+Nothing of this is loaded unless the middleware is registered, so an application without tracing
+pays nothing.
 
 ## Request ids and logs
 

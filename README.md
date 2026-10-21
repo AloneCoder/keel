@@ -29,7 +29,7 @@ curl http://127.0.0.1:8080/hello/world
 php examples/hello/bin/console keel:routes
 ```
 
-The console ships `keel:routes`, `keel:compile`, `keel:cache-clear`, `keel:debug:container`,
+The console ships `keel:routes`, `keel:compile`, `keel:cache-clear`, `keel:debug:container`, `keel:doctor`,
 `keel:preload`, `keel:openapi`, `keel:serve` (built-in server or FrankenPHP worker mode with
 `--watch`) and the `keel:make:*` generators for controllers, commands, middleware, listeners,
 health checks and authenticators; see [Application](docs/en/app.md).

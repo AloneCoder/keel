@@ -51,6 +51,12 @@ the kernel follows and the application must follow too:
   and does not stop the worker; `Kernel::handle()` itself never throws.
 - `MAX_REQUESTS` is the safety net against memory leaks in third-party code: the worker exits
   and FrankenPHP/RoadRunner start a fresh one.
+- `MemoryGuard` is the second net: after every request the runtimes compare the memory the
+  process holds (`memory_get_usage(true)`) with `KEEL_MAX_MEMORY` (bytes or `256M`), by default
+  90% of `memory_limit`; above it the worker logs a warning with the numbers and stops instead
+  of dying mid-request with "Allowed memory size exhausted". `KEEL_MAX_MEMORY=0` turns it off.
+  `MetricsMiddleware` exports the same number as the `process_memory_bytes` gauge, and
+  `keel:doctor` reports which limits a worker has.
 
 The `examples/hello` route `/stats` shows `request_hits` (always 1, the service is `Resettable`)
 and `worker_hits` (grows in worker mode, 1 under php-fpm).

@@ -496,4 +496,68 @@ abstract class ContainerBehaviourTestCase extends TestCase
         self::assertInstanceOf(Logger::class, $container->get(Mailer::class)->logger, 'registered: resolved with autowiring off');
         self::assertSame($container->get(Logger::class), $container->get(Database::class)->logger);
     }
+
+
+    /**
+     * The one-line message is unchanged; the structured fields and report() lay the failure out
+     * for consoles: which dependency, why, whether autowiring was on, and the resolution path.
+     */
+    public function testUnresolvableDependencyIsReportedWithDependencyReasonAndPath(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set(Newsletter::class);
+        $definitions->set(Mailer::class);
+        $container = $this->createContainer($definitions, autowire: false);
+
+        try {
+            $container->get(Newsletter::class);
+            self::fail('expected a ContainerException');
+        } catch (ContainerException $e) {
+            self::assertSame(Logger::class, $e->dependency);
+            self::assertSame('autowiring is disabled and the class is not registered', $e->reason);
+            self::assertFalse($e->autowire);
+            self::assertSame([Newsletter::class, Mailer::class], $e->chain);
+            self::assertSame(implode("\n", [
+                'Cannot resolve service ' . Mailer::class,
+                '',
+                'Dependency: ' . Logger::class,
+                'Reason: autowiring is disabled and the class is not registered',
+                'Autowiring: disabled',
+                '',
+                'Resolution path:',
+                Newsletter::class . ' -> ' . Mailer::class . ' -> ' . Logger::class,
+            ]), $e->report());
+        }
+
+        $definitions = new Definitions();
+        $definitions->set(Database::class)->argument('clock', new Ref(Clock::class));
+        $definitions->parameter('db.dsn', 'x');
+        $container = $this->createContainer($definitions);
+        try {
+            $container->get(Database::class);
+            self::fail('expected a ContainerException');
+        } catch (ContainerException $e) {
+            self::assertSame(Clock::class, $e->dependency);
+            self::assertSame('it is an interface: register an implementation and alias the interface to it', $e->reason);
+            self::assertTrue($e->autowire);
+        }
+
+        try {
+            $container->get(AbstractThing::class);
+            self::fail('expected a NotFoundException');
+        } catch (NotFoundException $e) {
+            self::assertSame('it is an abstract class: register a concrete implementation and alias it', $e->reason);
+            self::assertSame([], $e->chain);
+            self::assertSame("Cannot resolve service " . AbstractThing::class . "\n\nReason: it is an abstract class: register a concrete implementation and alias it\nAutowiring: enabled", $e->report());
+        }
+
+        try {
+            $container->get('nope');
+            self::fail('expected a NotFoundException');
+        } catch (NotFoundException $e) {
+            self::assertSame('no service or class has this id', $e->reason);
+        }
+
+        self::assertSame('plain', new ContainerException('plain')->report(), 'without structure the report is the message');
+    }
 }

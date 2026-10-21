@@ -8,6 +8,7 @@ use Keel\App\App;
 use Keel\Config\Env;
 use Keel\Console\Command\CacheClearCommand;
 use Keel\Console\Command\CompileCommand;
+use Keel\Console\Command\DoctorCommand;
 use Keel\Console\Command\OpenApiCommand;
 use Keel\Console\Command\PreloadCommand;
 use Keel\Console\Command\RoutesCommand;
@@ -19,6 +20,7 @@ use Symfony\Component\Console\Tester\ApplicationTester;
 
 #[CoversClass(ConsoleFactory::class)]
 #[CoversClass(CompileCommand::class)]
+#[CoversClass(DoctorCommand::class)]
 #[CoversClass(CacheClearCommand::class)]
 #[CoversClass(RoutesCommand::class)]
 #[CoversClass(PreloadCommand::class)]
@@ -132,5 +134,21 @@ final class ConsoleTest extends TestCase
             putenv('FRANKENPHP_BINARY');
             putenv('PATH=' . (getenv('PATH') ?: '/usr/bin:/bin'));
         }
+    }
+
+    public function testDoctorReportsEverySectionAndRunsHealthChecksUnlessSkipped(): void
+    {
+        self::assertSame(0, $this->tester->run(['command' => 'keel:doctor']));
+        $display = $this->tester->getDisplay();
+        self::assertStringContainsString('Keel ' . \Keel\Keel::VERSION . ' doctor for', $display);
+        foreach (['php', 'extensions', 'config', 'cache', 'runtime', 'packages', 'container', 'routes', 'health'] as $section) {
+            self::assertStringContainsString("\n" . $section . "\n", $display, 'section ' . $section);
+        }
+        self::assertStringContainsString('OK   PHP ' . \PHP_VERSION, $display);
+        self::assertStringContainsString('OK   ping: up (pong)', $display);
+        self::assertMatchesRegularExpression('/\d+ ok, \d+ warning\(s\), 0 failure\(s\)/', $display);
+
+        self::assertSame(0, $this->tester->run(['command' => 'keel:doctor', '--skip-health' => true]));
+        self::assertStringNotContainsString('ping: up', $this->tester->getDisplay());
     }
 }

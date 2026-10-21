@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Keel\OpenApi;
 
 /**
- * Reads the array element types a signature cannot carry: "@param list<Item> $items" and
- * "@return list<User>". Class names are resolved like PHP does: fully qualified names as is,
+ * Reads the array element types a signature cannot carry: "@param list<Item> $items",
+ * "@return list<User>" and "@return Page<User>". Class names are resolved like PHP does: fully qualified names as is,
  * then through the "use" imports of the declaring file, then against the declaring namespace.
  *
  * @internal
@@ -49,7 +49,7 @@ final class DocTypes
     private static function items(string $type, \ReflectionFunctionAbstract $function): ?string
     {
         $type = trim($type, '()');
-        if (preg_match('/^(?:list|array|iterable|non-empty-list|non-empty-array)<(?:[^,<>]+,\s*)?([^<>]+)>$/', $type, $m) === 1) {
+        if (preg_match('/^(?:list|array|iterable|non-empty-list|non-empty-array|\\\\?(?:[\w\\\\]+\\\\)?Page)<(?:[^,<>]+,\s*)?([^<>]+)>$/', $type, $m) === 1) {
             $inner = trim($m[1]);
         } elseif (preg_match('/^(\S+?)\[\]$/', $type, $m) === 1) {
             $inner = $m[1];

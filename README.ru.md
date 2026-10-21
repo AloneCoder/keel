@@ -29,7 +29,7 @@ curl http://127.0.0.1:8080/hello/world
 php examples/hello/bin/console keel:routes
 ```
 
-В консоли есть `keel:routes`, `keel:compile`, `keel:cache-clear`, `keel:debug:container`,
+В консоли есть `keel:routes`, `keel:compile`, `keel:cache-clear`, `keel:debug:container`, `keel:doctor`,
 `keel:preload`, `keel:openapi`, `keel:serve` (встроенный сервер или worker mode FrankenPHP с
 `--watch`) и генераторы `keel:make:*` для контроллеров, команд, middleware, слушателей,
 проверок здоровья и аутентификаторов; см. [Приложение](docs/ru/app.md).

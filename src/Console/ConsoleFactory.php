@@ -8,6 +8,7 @@ use Keel\App\App;
 use Keel\Console\Command\CacheClearCommand;
 use Keel\Console\Command\CompileCommand;
 use Keel\Console\Command\DebugContainerCommand;
+use Keel\Console\Command\DoctorCommand;
 use Keel\Console\Command\MakeAuthenticatorCommand;
 use Keel\Console\Command\MakeCheckCommand;
 use Keel\Console\Command\MakeCommandCommand;
@@ -41,6 +42,7 @@ final class ConsoleFactory
             new RoutesCommand($app->router),
             new PreloadCommand($app),
             new DebugContainerCommand($app),
+            new DoctorCommand($app),
             new OpenApiCommand($app),
             new ServeCommand($app),
             new MakeControllerCommand($app),

@@ -13,9 +13,6 @@ final class NotFoundException extends ContainerException implements NotFoundExce
      */
     public static function forId(string $id, array $chain = []): self
     {
-        return new self(self::describeChain(
-            sprintf('Service "%s" is not registered and cannot be autowired', $id),
-            $chain,
-        ));
+        return self::withChain(sprintf('Service "%s" is not registered and cannot be autowired', $id), $chain);
     }
 }

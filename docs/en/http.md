@@ -71,6 +71,26 @@ silently saturated value. Union members are tried in a fixed order, `int`, `floa
 `string`, then classes and enums, whatever the declaration order (PHP itself reports `int|string`
 as `string|int`): for `int|string` the value `"42"` becomes `42` and `"x"` stays a string.
 
+## Pagination
+
+`#[FromQuery] PageRequest $page` reads `?page=3&perPage=50` (defaults 1 and 20, `perPage` at most
+100; out of range is a 400 like any other query DTO); `offset()` and `limit()` feed the query.
+Return a `Page` and the response is the envelope
+`{"items": [...], "page": 3, "perPage": 50, "total": 93, "pages": 2}`:
+
+```php
+/** @return Page<UserView> */
+#[Get('/users')]
+public function list(#[FromQuery] PageRequest $page): Page
+{
+    return Page::of($this->users->slice($page->offset(), $page->limit()), $page, $this->users->count());
+}
+```
+
+`@return Page<UserView>` (or `#[Response(200, type: Page::class, items: UserView::class)]`) gives
+the OpenAPI document the element type. Subclass `PageRequest` with your own constructor to change
+the defaults or the upper bound.
+
 ## Responses
 
 `Responder::respond($result, ?int $status)`:

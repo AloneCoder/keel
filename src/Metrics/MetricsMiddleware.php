@@ -25,6 +25,8 @@ final class MetricsMiddleware implements MiddlewareInterface
 
     public const string DURATION = 'http_request_duration_seconds';
 
+    public const string MEMORY = 'process_memory_bytes';
+
     /** Methods recorded as themselves; anything else is labelled OTHER, so clients cannot grow the label set. */
     public const array METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
 
@@ -41,6 +43,9 @@ final class MetricsMiddleware implements MiddlewareInterface
             $registry
                 ->counter(self::REQUESTS, 'HTTP requests handled', ['method', 'route', 'status'])
                 ->histogram(self::DURATION, 'HTTP request duration in seconds', ['method', 'route'], $this->config->buckets);
+        }
+        if (!$registry->has(self::MEMORY)) {
+            $registry->gauge(self::MEMORY, 'Memory held by the PHP process that answered the last request, in bytes (memory_get_usage(true))');
         }
     }
 
@@ -67,6 +72,7 @@ final class MetricsMiddleware implements MiddlewareInterface
             $route = $this->routeLabel($request);
             $this->registry->inc(self::REQUESTS, [$method, $route, $status]);
             $this->registry->observe(self::DURATION, [$method, $route], (hrtime(true) - $started) / 1e9);
+            $this->registry->set(self::MEMORY, [], (float) memory_get_usage(true));
         }
     }
 

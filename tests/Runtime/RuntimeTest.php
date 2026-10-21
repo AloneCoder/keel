@@ -10,6 +10,7 @@ use Keel\Http\SapiEmitter;
 use Keel\Kernel\Kernel;
 use Keel\Runtime\FpmRuntime;
 use Keel\Runtime\FrankenPhpRuntime;
+use Keel\Runtime\MemoryGuard;
 use Keel\Runtime\RoadRunnerRuntime;
 use Keel\Runtime\Runtime;
 use Keel\Tests\Container\Fixtures\ExplodingReset;
@@ -33,6 +34,7 @@ use Spiral\RoadRunner\WorkerInterface;
 #[CoversClass(FpmRuntime::class)]
 #[CoversClass(FrankenPhpRuntime::class)]
 #[CoversClass(RoadRunnerRuntime::class)]
+#[CoversClass(MemoryGuard::class)]
 #[CoversClass(SapiEmitter::class)]
 final class RuntimeTest extends TestCase
 {
@@ -281,5 +283,78 @@ final class RuntimeTest extends TestCase
             }
             self::assertSame(['1 service(s) failed to reset: boom (RuntimeException)', 'boom', 'socket closed'], $chain);
         }
+    }
+
+
+    public function testMemoryGuardReadsTheEnvironmentAndPhpIniShorthand(): void
+    {
+        self::assertSame(268_435_456, MemoryGuard::parseSize('256M'));
+        self::assertSame(1_073_741_824, MemoryGuard::parseSize(' 1g '));
+        self::assertSame(65_536, MemoryGuard::parseSize('64K'));
+        self::assertSame(262_144, MemoryGuard::parseSize('262144'));
+        self::assertSame(0, MemoryGuard::parseSize('-1'), 'unlimited');
+        self::assertSame(0, MemoryGuard::parseSize('lots'), 'unparsable means off');
+
+        self::assertSame(268_435_456, MemoryGuard::fromEnvironment(['KEEL_MAX_MEMORY' => '256M'])->limit());
+        self::assertFalse(MemoryGuard::fromEnvironment(['KEEL_MAX_MEMORY' => '0'])->enabled());
+
+        $memoryLimit = MemoryGuard::parseSize((string) ini_get('memory_limit'));
+        $default = MemoryGuard::fromEnvironment(['KEEL_MAX_MEMORY' => ''])->limit();
+        if ($memoryLimit > 0) {
+            self::assertSame((int) ($memoryLimit * 0.9), $default, 'default: 90% of memory_limit');
+        } else {
+            self::assertSame(0, $default, 'memory_limit=-1: off');
+        }
+
+        $guard = new MemoryGuard(\PHP_INT_MAX);
+        self::assertFalse($guard->exceeded(1));
+        self::assertGreaterThan(0, $guard->usage());
+        self::assertSame('1.5 MB', MemoryGuard::format(1_572_864));
+        self::assertSame('512 B', MemoryGuard::format(512));
+    }
+
+    public function testFrankenPhpLoopStopsWhenTheMemoryGuardTrips(): void
+    {
+        $kernel = $this->kernel();
+        $logger = new ArrayLogger();
+        $emitter = new CollectingEmitter();
+        $calls = 0;
+        $handleRequest = static function (callable $handler) use (&$calls): bool {
+            $calls++;
+            self::globalsFor('GET', '/api/users/' . $calls);
+            $handler();
+
+            return true; // FrankenPHP would keep going forever
+        };
+
+        new FrankenPhpRuntime(null, $handleRequest, $emitter, $logger, new MemoryGuard(1, $logger))->run($kernel);
+
+        self::assertSame(1, $calls, 'the loop ended right after the first request');
+        self::assertCount(1, $logger->records);
+        self::assertStringStartsWith('warning: Worker memory ', $logger->records[0]);
+        self::assertStringContainsString('exceeds the limit of 1 B after 1 request(s)', $logger->records[0]);
+
+        $calls = 0;
+        new FrankenPhpRuntime(2, $handleRequest, $emitter, $logger, new MemoryGuard(0, $logger))->run($kernel);
+        self::assertSame(2, $calls, 'a disabled guard never ends the loop');
+        self::assertCount(1, $logger->records);
+    }
+
+    public function testRoadRunnerLoopAsksToBeStoppedWhenTheMemoryGuardTrips(): void
+    {
+        $kernel = $this->kernel();
+        $logger = new ArrayLogger();
+        $inner = $this->createMock(WorkerInterface::class);
+        $inner->expects(self::once())->method('stop');
+        $worker = $this->createStub(PSR7WorkerInterface::class);
+        $worker->method('waitRequest')->willReturn(new ServerRequest('GET', '/api/users/1'));
+        $worker->method('getWorker')->willReturn($inner);
+
+        $exit = new RoadRunnerRuntime($worker, $logger, new MemoryGuard(1, $logger))->run($kernel);
+
+        self::assertSame(0, $exit);
+        self::assertSame(1, $kernel->container->get(RequestCounter::class)->resets, 'one request was served, then the worker asked to stop');
+        self::assertCount(1, $logger->records);
+        self::assertStringStartsWith('warning: Worker memory ', $logger->records[0]);
     }
 }

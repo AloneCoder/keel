@@ -131,3 +131,23 @@ PHP не умеет перезагружать класс, поэтому `App` 
   для запрошенного id возвращает true;
 - `CircularDependencyException` — цикл без lazy-звена, в сообщении вся цепочка;
 - `ContainerException` — всё остальное; сообщение содержит цепочку разрешения, когда она есть.
+
+Отсутствующая зависимость несёт и диагноз: `$dependency`, `$reason` (не зарегистрирована,
+autowiring выключен, интерфейс или абстрактный класс, непубличный конструктор), `$autowire` и
+`$chain`, а `report()` раскладывает их для консоли — именно это печатают `keel:compile` и
+`keel:doctor`:
+
+```
+Cannot resolve service App\Service\OrderService
+
+Dependency: App\Repository\OrderRepository
+Reason: autowiring is disabled and the class is not registered
+Autowiring: disabled
+
+Resolution path:
+App\Controller\OrderController -> App\Service\OrderService -> App\Repository\OrderRepository
+```
+
+`new Diagnostics($definitions, $autowire)->check()` выполняет то же разрешение для каждого
+зарегистрированного сервиса, алиаса и тега, ничего не создавая, и возвращает по такому исключению
+на проблему; `keel:doctor` и тест на ваши `Definitions` упадут раньше первого запроса.

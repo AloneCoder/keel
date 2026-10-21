@@ -42,6 +42,7 @@ to a copy you host.
 | DTO constructor parameter | property typed from the signature: scalars, nullable (`type: [string, null]`), unions (`oneOf`), backed and unit enums (`enum`), nested DTOs (`$ref`), `DateTimeInterface` (`date-time`), arrays with element types from `@param list<Item>` or `#[Field(items:)]` |
 | validation rule | `Length` → `minLength`/`maxLength`, `Range` → `minimum`/`maximum`, `Count` → `minItems`/`maxItems`, `Pattern` → `pattern`, `Email` → `format: email`, `Url` → `format: uri`, `Choice` → `enum`, `NotBlank` → required |
 | `#[Status(201)]` and the return type | the success response: a DTO → `$ref`, `list<Dto>` from `@return` → array of `$ref`, `string` → `text/html`, `void`/`null` → 204, `ResponseInterface` → no schema |
+| `Page` return type | the pagination envelope (`items`, `page`, `perPage`, `total`, `pages`) with the element type from `@return Page<Dto>` or `#[Response(type: Page::class, items: Dto::class)]` |
 | `#[Auth]` | `security` with every configured authenticator's scheme, plus 401 (and 403 with roles) |
 | `#[RateLimit]` | a 429 response |
 | body or parameters present | a 400 response with the `Problem` schema |

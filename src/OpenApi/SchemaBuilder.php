@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Keel\OpenApi;
 
+use Keel\Http\Pagination\Page;
 use Keel\OpenApi\Attribute\Field;
 use Keel\Validation\Choice;
 use Keel\Validation\Count;
@@ -51,6 +52,9 @@ final class SchemaBuilder
         }
         if ($type === 'array' || $type === 'iterable' || $type === 'list') {
             return ['type' => 'array', 'items' => $items === null ? [] : $this->named($items)];
+        }
+        if ($type === Page::class) {
+            return $this->pageSchema($items);
         }
         if (class_exists($type) || enum_exists($type)) {
             /** @var class-string $type */
@@ -145,12 +149,35 @@ final class SchemaBuilder
                 'object' => ['type' => 'object'],
                 default => [],
             };
+        } elseif ($name === Page::class) {
+            $schema = $this->pageSchema($items);
         } else {
             /** @var class-string $name */
             $schema = $this->classSchema($name);
         }
 
         return $type->allowsNull() && $name !== 'mixed' && $name !== 'null' ? self::nullable($schema) : $schema;
+    }
+
+    /**
+     * The envelope of Keel\Http\Pagination\Page, inline because the element type differs per
+     * route: from "@return Page<Item>" or #[Response(type: Page::class, items: Item::class)].
+     *
+     * @return array<string, mixed>
+     */
+    public function pageSchema(?string $items): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'items' => ['type' => 'array', 'items' => $items === null ? [] : $this->named($items)],
+                'page' => ['type' => 'integer', 'minimum' => 1],
+                'perPage' => ['type' => 'integer', 'minimum' => 1],
+                'total' => ['type' => 'integer', 'minimum' => 0],
+                'pages' => ['type' => 'integer', 'minimum' => 0],
+            ],
+            'required' => ['items', 'page', 'perPage', 'total', 'pages'],
+        ];
     }
 
     /**

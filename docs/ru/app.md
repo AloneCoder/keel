@@ -151,6 +151,13 @@ final class LogProvider implements ServiceProvider
 - `keel:cache-clear` — удалить их;
 - `keel:debug:container [filter]` — таблица сервисов, алиасов, параметров и экземпляров, из
   которых собирается контейнер;
+- `keel:doctor [--skip-health]` — осмотр установки: PHP и OPcache, расширения apcu, curl и pdo,
+  `APP_ENV`/`APP_DEBUG`, `config/` и пути discovery, каталог кэша и его файлы, рантайм, который
+  выберет `KEEL_RUNTIME`, и лимиты воркеров (`MAX_REQUESTS`, `KEEL_MAX_MEMORY`), необязательные
+  пакеты, контейнер (прогон всех сервисов «вхолостую», см. [Контейнер](container.md#ошибки), плюс
+  компиляция в памяти), маршруты, каталоги сессий и кэша и зарегистрированные проверки здоровья.
+  `OK`, `WARN` или `FAIL` на строку; код выхода 1, если что-то упало, так что команда уместна в
+  пайплайне деплоя. `--skip-health` пропускает проверки здоровья, когда они ходят в базу;
 - `keel:make:controller`, `keel:make:command`, `keel:make:middleware`, `keel:make:listener`,
   `keel:make:check` (проверка здоровья с тегом), `keel:make:authenticator` (`PrincipalResolver`,
   а с `--scheme` — полный `Authenticator`) — генераторы классов в namespace проекта

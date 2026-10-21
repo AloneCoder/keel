@@ -25,8 +25,6 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class Generator
 {
-    private const string PLACEHOLDER = '~\{([a-zA-Z_][a-zA-Z0-9_]*)(?::((?:[^{}]|\{(?-1)\})*))?\}~';
-
     private const string PROBLEM = 'application/problem+json';
 
     public function __construct(
@@ -55,7 +53,7 @@ final class Generator
             }
 
             $operation = $this->operation($route, $controller, $method, $schemas, array_keys($securitySchemes), $usesProblem);
-            $path = (string) preg_replace(self::PLACEHOLDER, '{$1}', $route->path);
+            $path = $route->template();
             $baseId = $operation['operationId'];
             $several = count($route->methods) > 1;
             foreach ($route->methods as $httpMethod) {
@@ -190,7 +188,7 @@ final class Generator
             $byName[$parameter->getName()] = $parameter;
         }
 
-        preg_match_all(self::PLACEHOLDER, $route->path, $matches, \PREG_SET_ORDER);
+        preg_match_all(Route::PLACEHOLDER, $route->path, $matches, \PREG_SET_ORDER);
         foreach ($matches as $match) {
             $name = $match[1];
             $schema = isset($byName[$name]) ? $schemas->forParameter($byName[$name]) : ['type' => 'string'];

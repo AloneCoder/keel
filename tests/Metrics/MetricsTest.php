@@ -180,6 +180,7 @@ final class MetricsTest extends TestCase
         $text = $client->get('/stats')->assertOk()->assertHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')->body();
         self::assertNotSame([], $storage->all(), 'samples went to the injected storage');
         self::assertStringContainsString('http_requests_total{method="GET",route="/status",status="200"} 2', $text);
+        self::assertMatchesRegularExpression('/^process_memory_bytes [1-9]\d*$/m', $text, 'the gauge holds the memory of the process that answered');
         self::assertStringContainsString('http_requests_total{method="GET",route="unmatched",status="404"} 2', $text);
         self::assertStringContainsString('http_requests_total{method="POST",route="unmatched",status="405"} 1', $text);
         self::assertStringContainsString('http_requests_total{method="OTHER",route="unmatched",status="405"} 2', $text, 'unknown methods share one label value');

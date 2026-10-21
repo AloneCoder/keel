@@ -65,6 +65,7 @@ http_requests_total{method="GET",route="/users/{id}",status="200"} 42
 http_request_duration_seconds_bucket{method="GET",route="/users/{id}",le="0.01"} 40
 http_request_duration_seconds_count{method="GET",route="/users/{id}"} 42
 http_request_duration_seconds_sum{method="GET",route="/users/{id}"} 0.3123
+process_memory_bytes 35651584
 ```
 
 Метка `route` — шаблон маршрута, так что кардинальность ограничена; запросы без маршрута помечены
@@ -109,6 +110,34 @@ php-fpm или поток FrankenPHP одного сервера прибавл�
 масштабированы на 10⁶, чтобы атомарные инкременты APCu годились для длительностей, — это
 ограничивает один gauge или сумму примерно ±9,2·10¹² (большие значения обрезаются до предела).
 Зарегистрируйте реализацию под `MetricsStorage` для всего остального.
+
+## Трассировка (OpenTelemetry)
+
+`Keel\Telemetry\TracingMiddleware` открывает по одному серверному спану на запрос: имя
+`GET /users/{id}` (паттерн маршрута, один метод, если ничего не совпало), kind `SERVER`, атрибуты
+по семантическим соглашениям HTTP (`http.request.method`, `url.path`, `url.query`, `url.scheme`,
+`server.address`, `http.route`, `user_agent.original`, `client.address`, `keel.request_id`,
+`http.response.status_code`). Входящий заголовок `traceparent` продолжает трассу вызывающего
+(W3C Trace Context; передайте другой `TextMapPropagatorInterface`, чтобы это изменить). Ответ 5xx
+или исключение помечают спан ошибкой и записывают исключение; 404 и 400 — нет. Пока работает
+хэндлер, спан активен, так что спаны, которые вы открываете через tracer, становятся его
+потомками, а `TracingMiddleware::span($request)` отдаёт его для своих событий и атрибутов.
+
+Нужны `open-telemetry/api` и `TracerProviderInterface` в контейнере — там живут SDK и экспортёр
+(`composer require open-telemetry/sdk` плюс экспортёр, например `open-telemetry/exporter-otlp`):
+
+```php
+// config/services.php, провайдер
+$definitions->instance(TracerProviderInterface::class, TracerProvider::builder()
+    ->addSpanProcessor(new BatchSpanProcessor($exporter, ClockFactory::getDefault()))
+    ->build());
+
+// config/http.php
+return new HttpConfig([RequestIdMiddleware::class, TracingMiddleware::class, /* ... */]);
+```
+
+Без зарегистрированного middleware ничего из этого не загружается: приложение без трассировки
+ничего не платит.
 
 ## Идентификаторы запросов и логи
 

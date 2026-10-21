@@ -152,6 +152,14 @@ final class LogProvider implements ServiceProvider
 - `keel:cache-clear`: remove them;
 - `keel:debug:container [filter]`: table of the services, aliases, parameters and instances the
   container is built from;
+- `keel:doctor [--skip-health]`: a check-up of the installation: PHP and OPcache, the apcu, curl
+  and pdo extensions, `APP_ENV`/`APP_DEBUG`, `config/` and the discovery paths, the cache directory
+  and its files, the runtime `KEEL_RUNTIME` selects and its worker limits (`MAX_REQUESTS`,
+  `KEEL_MAX_MEMORY`), optional packages, the container (a dry run of every service, see
+  [Container](container.md#errors), plus a compilation in memory), routes, session and cache
+  directories, and the registered health checks. `OK`, `WARN` or `FAIL` per line; the exit code
+  is 1 when anything failed, so it fits a deploy pipeline. `--skip-health` leaves the health
+  checks out when they would reach a database;
 - `keel:make:controller`, `keel:make:command`, `keel:make:middleware`, `keel:make:listener`,
   `keel:make:check` (a tagged health check), `keel:make:authenticator` (a `PrincipalResolver`, or
   with `--scheme` a full `Authenticator`): class generators in the project namespace (from

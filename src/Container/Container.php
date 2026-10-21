@@ -126,13 +126,10 @@ final class Container implements ContainerInterface
     private function notFound(string $id): ContainerException
     {
         if ($this->resolving === []) {
-            return NotFoundException::forId($id);
+            return NotFoundException::unresolvable($id, [], $this->autowire);
         }
 
-        return ContainerException::withChain(
-            sprintf('Service "%s" is not registered and cannot be autowired', $id),
-            array_keys($this->resolving),
-        );
+        return ContainerException::unresolvable($id, array_keys($this->resolving), $this->autowire);
     }
 
     private function autowiredDefinition(string $id): ?Definition

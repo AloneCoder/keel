@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Keel\Console\Command;
 
 use Keel\App\App;
+use Keel\Container\Exception\ContainerException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -20,7 +21,15 @@ final class CompileCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        foreach ($this->app->compile() as $path) {
+        try {
+            $paths = $this->app->compile();
+        } catch (ContainerException $exception) {
+            $output->writeln('<error>' . $exception->report() . '</error>');
+
+            return Command::FAILURE;
+        }
+
+        foreach ($paths as $path) {
             $output->writeln('<info>written</info> ' . $path);
         }
 

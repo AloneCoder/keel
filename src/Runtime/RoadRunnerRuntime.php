@@ -15,18 +15,23 @@ use Spiral\RoadRunner\Worker;
 
 /**
  * RoadRunner HTTP worker (spiral/roadrunner-http). Requests arrive as PSR-7 objects over
- * the Goridge pipe; the loop ends when RoadRunner stops the worker.
+ * the Goridge pipe; the loop ends when RoadRunner stops the worker, or when the MemoryGuard
+ * (KEEL_MAX_MEMORY) says the process has grown too large: the worker then asks to be stopped
+ * and RoadRunner starts a fresh one.
  */
 final class RoadRunnerRuntime implements RuntimeInterface
 {
     public function __construct(
         private readonly ?PSR7WorkerInterface $worker = null,
         private readonly ?LoggerInterface $logger = null,
+        private readonly ?MemoryGuard $memory = null,
     ) {}
 
     public function run(Kernel $kernel): int
     {
         $worker = $this->worker ?? self::createWorker($kernel);
+        $memory = $this->memory ?? MemoryGuard::fromEnvironment(null, $this->logger);
+        $handled = 0;
 
         while (true) {
             try {
@@ -50,6 +55,12 @@ final class RoadRunnerRuntime implements RuntimeInterface
             } finally {
                 $kernel->terminate();
                 gc_collect_cycles();
+            }
+
+            if ($memory->exceeded(++$handled)) {
+                $worker->getWorker()->stop();
+
+                return 0;
             }
         }
     }

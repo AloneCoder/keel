@@ -14,7 +14,8 @@ use Psr\Log\LoggerInterface;
  * FrankenPHP worker mode: the script boots once, then frankenphp_handle_request() hands
  * requests to the handler in a loop. Superglobals are refreshed for every request.
  * Each iteration ends with Kernel::terminate() and a garbage-collection run; MAX_REQUESTS
- * (constructor argument or $_SERVER['MAX_REQUESTS']) restarts the worker as a safety net.
+ * (constructor argument or $_SERVER['MAX_REQUESTS']) and the MemoryGuard (KEEL_MAX_MEMORY)
+ * restart the worker as safety nets.
  */
 final class FrankenPhpRuntime implements RuntimeInterface
 {
@@ -26,6 +27,7 @@ final class FrankenPhpRuntime implements RuntimeInterface
         private readonly ?\Closure $handleRequest = null,
         private readonly ?EmitterInterface $emitter = null,
         private readonly ?LoggerInterface $logger = null,
+        private readonly ?MemoryGuard $memory = null,
     ) {}
 
     public function run(Kernel $kernel): int
@@ -51,10 +53,14 @@ final class FrankenPhpRuntime implements RuntimeInterface
             }
         };
 
+        $memory = $this->memory ?? MemoryGuard::fromEnvironment(null, $this->logger);
         $handled = 0;
         while (($max <= 0 || $handled < $max) && $handleRequest($handler)) {
             $handled++;
             gc_collect_cycles();
+            if ($memory->exceeded($handled)) {
+                break;
+            }
         }
 
         return 0;

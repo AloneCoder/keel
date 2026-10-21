@@ -10,6 +10,25 @@ Hardening release after a full code review. No public method was removed or rena
 only gained optional trailing parameters. A few misconfigurations that used to be accepted silently
 now throw at construction or compile time (listed under Changed).
 
+### Added
+
+- `keel:doctor`: a check-up of the installation (PHP, extensions, configuration, cache directory and
+  files, runtime and worker limits, optional packages, a dry run of the container, routes, storage
+  directories, health checks) with `OK`/`WARN`/`FAIL` lines and exit code 1 on a failure.
+- `Container\Diagnostics`: resolves every registered service, alias and tag without instantiating
+  anything and returns the problems; `ContainerException` carries `$dependency`, `$reason`,
+  `$autowire` and `$chain` for a missing service and `report()` prints the diagnosis with the
+  resolution path (shown by `keel:compile` and `keel:doctor`).
+- `Runtime\MemoryGuard`: FrankenPHP and RoadRunner workers stop, with a logged warning, once the
+  process holds more than `KEEL_MAX_MEMORY` (default 90% of `memory_limit`); `MetricsMiddleware`
+  exports `process_memory_bytes`.
+- `Http\Pagination\PageRequest` and `Page`: `?page=&perPage=` from the query string, the
+  `{items, page, perPage, total, pages}` envelope, and its OpenAPI schema from `@return Page<Dto>`
+  or `#[Response(type: Page::class, items: Dto::class)]`.
+- `Telemetry\TracingMiddleware`: one OpenTelemetry server span per request (route-named, HTTP
+  semantic attributes, W3C trace context propagation, errors recorded); needs `open-telemetry/api`
+  and a `TracerProviderInterface` in the container.
+
 ### Security
 
 - `ApcuCounters` fails closed: when APCu cannot store a counter the limit reads as exhausted
