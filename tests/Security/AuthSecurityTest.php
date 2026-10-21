@@ -19,7 +19,6 @@ use Keel\Testing\TestClient;
 use Keel\Tests\Auth\Fixtures\AccountController;
 use Keel\Tests\Auth\Fixtures\Tokens;
 use Keel\Tests\RateLimit\Fixtures\SearchController;
-use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -28,7 +27,6 @@ use PHPUnit\Framework\TestCase;
  * Authentication and rate limiting under hostile input: scheme confusion, replay, signature
  * forgery, header spoofing and limit evasion.
  */
-#[CoversNothing]
 #[Group('security')]
 final class AuthSecurityTest extends TestCase
 {
@@ -50,6 +48,7 @@ final class AuthSecurityTest extends TestCase
         yield 'empty bearer' => [['Authorization' => 'Bearer ']];
         yield 'bearer with embedded space' => [['Authorization' => 'Bearer user-token extra']];
         yield 'basic scheme' => [['Authorization' => 'Basic dXNlcjpwYXNz']];
+        yield 'bearer not at the start' => [['Authorization' => 'Basic Bearer user-token']];
         yield 'token as api key' => [['X-Api-Key' => 'Bearer user-token']];
         yield 'hmac without fields' => [['Authorization' => 'HMAC ']];
         yield 'hmac uppercase hex of a wrong signature' => [['Authorization' => 'HMAC svc:' . time() . ':' . str_repeat('A', 64)]];

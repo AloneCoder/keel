@@ -24,7 +24,6 @@ use Keel\Tests\Kernel\Fixtures\Clock;
 use Keel\Tests\Kernel\Fixtures\UserController;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\ServerRequest;
-use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -36,7 +35,6 @@ use Psr\Http\Message\ServerRequestInterface;
  * placeholder-constraint bypasses, method override abuse, header injection, host poisoning,
  * cookie tampering, information leaks and state carried between requests.
  */
-#[CoversNothing]
 #[Group('security')]
 final class SecurityTest extends TestCase
 {

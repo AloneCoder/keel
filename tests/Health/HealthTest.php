@@ -44,6 +44,10 @@ final class HealthTest extends TestCase
     {
         $client = $this->client([DiskCheck::class, QueueCheck::class]);
 
+        $middleware = new HealthMiddleware(new \Keel\Http\Responder(new \Nyholm\Psr7\Factory\Psr17Factory(), new \Nyholm\Psr7\Factory\Psr17Factory()), new \ArrayIterator([new DiskCheck(), new QueueCheck()]));
+        self::assertSame('degraded', $middleware->report()['status']);
+        self::assertSame(['disk', 'queue'], array_keys($middleware->report()['checks']));
+
         $client->get('/health')
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store')
@@ -57,7 +61,7 @@ final class HealthTest extends TestCase
     {
         QueueCheck::$result = HealthResult::down('connection refused');
         try {
-            $this->client([QueueCheck::class])->get('/health')->assertStatus(503)->assertJsonPath('checks.queue.detail', 'connection refused');
+            $this->client([QueueCheck::class, DiskCheck::class])->get('/health')->assertStatus(503)->assertJsonPath('status', 'down')->assertJsonPath('checks.queue.detail', 'connection refused');
         } finally {
             QueueCheck::$result = null;
         }

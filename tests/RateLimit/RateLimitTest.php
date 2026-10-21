@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Keel\Tests\RateLimit;
 
+use Keel\Auth\AuthConfig;
+use Keel\Auth\AuthMiddleware;
+use Keel\Auth\BearerTokenAuthenticator;
+use Keel\Auth\PrincipalResolver;
 use Keel\Container\Definitions;
 use Keel\Http\Exception\TooManyRequestsException;
 use Keel\Kernel\Kernel;
@@ -14,6 +18,7 @@ use Keel\RateLimit\RateLimiter;
 use Keel\RateLimit\RateLimitGuard;
 use Keel\RateLimit\RateLimitResult;
 use Keel\Testing\TestClient;
+use Keel\Tests\Auth\Fixtures\Tokens;
 use Keel\Tests\RateLimit\Fixtures\SearchController;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -94,16 +99,58 @@ final class RateLimitTest extends TestCase
     {
         self::assertSame(['limit' => 5, 'window' => 10, 'by' => 'principal'], new RateLimit(5, 10, 'principal')->value());
         self::assertSame([RateLimitGuard::class], new RateLimit(5)->middleware());
+        self::assertSame(1, new RateLimit(1, 1)->window);
 
-        $this->expectException(\InvalidArgumentException::class);
-        new RateLimit(5, 60, 'header');
+        foreach ([[0, 60, 'ip'], [5, 0, 'ip'], [5, 60, 'header']] as [$limit, $window, $by]) {
+            try {
+                new RateLimit($limit, $window, $by);
+                self::fail('rejected');
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringContainsString('RateLimit', $e->getMessage());
+            }
+        }
+    }
+
+    public function testPrincipalKeyIsolatesUsersAndStorageIsInjected(): void
+    {
+        $spy = new class implements CounterStorage {
+            /** @var list<string> */
+            public array $keys = [];
+
+            public function increment(string $key, int $ttl): int
+            {
+                $this->keys[] = $key;
+
+                return count(array_keys($this->keys, $key, true));
+            }
+        };
+        $definitions = new Definitions();
+        $definitions->instance(CounterStorage::class, $spy);
+        $definitions->set(RateLimiter::class)->argument('storage', new \Keel\Container\Ref(CounterStorage::class));
+        $definitions->set(Tokens::class)->alias(PrincipalResolver::class);
+        $definitions->instance(AuthConfig::class, new AuthConfig([BearerTokenAuthenticator::class]));
+        $client = TestClient::forKernel(Kernel::build($definitions, [SearchController::class], [AuthMiddleware::class]));
+
+        $client->get('/mine', ['Authorization' => 'Bearer user-token'])->assertOk();
+        $client->get('/mine', ['Authorization' => 'Bearer admin-token'])->assertOk();
+        $client->get('/mine', ['Authorization' => 'Bearer user-token'])->assertStatus(429);
+        $client->get('/mine')->assertOk();
+        self::assertStringStartsWith('/mine|u1:', $spy->keys[0]);
+        self::assertStringStartsWith('/mine|u2:', $spy->keys[1]);
+        self::assertStringStartsWith('/mine|127.0.0.1:', $spy->keys[3]);
+
+        self::assertInstanceOf(RateLimiter::class, new RateLimiter(), 'default storage works without APCu');
     }
 
     public function testInMemoryCountersExpire(): void
     {
-        $counters = new InMemoryCounters();
+        $counters = new InMemoryCounters($this->clock());
         self::assertSame(1, $counters->increment('a', 60));
         self::assertSame(2, $counters->increment('a', 60));
+        $this->now += 59;
+        self::assertSame(3, $counters->increment('a', 60));
+        $this->now += 1;
+        self::assertSame(1, $counters->increment('a', 60), 'expired exactly at the deadline');
         $counters->clear();
         self::assertSame(1, $counters->increment('a', 60));
     }

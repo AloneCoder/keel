@@ -6,7 +6,6 @@ namespace Keel\Metrics;
 
 use Keel\Http\Exception\HttpException;
 use Keel\Http\Responder;
-use Keel\Routing\MatchStatus;
 use Keel\Routing\RouteMatch;
 use Keel\Routing\Router;
 use Psr\Http\Message\ResponseInterface;
@@ -77,6 +76,6 @@ final class MetricsMiddleware implements MiddlewareInterface
 
         $result = $this->router->match($request->getMethod(), $request->getUri()->getPath());
 
-        return $result->status === MatchStatus::Found && $result->match !== null ? $result->match->route->path : 'unmatched';
+        return $result->match?->route->path ?? 'unmatched';
     }
 }

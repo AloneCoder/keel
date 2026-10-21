@@ -18,6 +18,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class HealthMiddleware implements MiddlewareInterface
 {
+    private const array RANK = [HealthStatus::Up->value => 0, HealthStatus::Degraded->value => 1, HealthStatus::Down->value => 2];
+
     private readonly HealthConfig $config;
 
     /** @var list<HealthCheck> */
@@ -33,7 +35,7 @@ final class HealthMiddleware implements MiddlewareInterface
         ?HealthConfig $config = null,
     ) {
         $this->config = $config ?? new HealthConfig();
-        $this->checks = is_array($checks) ? array_values($checks) : iterator_to_array($checks, false);
+        $this->checks = iterator_to_array($checks, false);
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -54,7 +56,7 @@ final class HealthMiddleware implements MiddlewareInterface
      */
     public function report(): array
     {
-        $overall = HealthStatus::Up;
+        $worst = 0;
         $checks = [];
         foreach ($this->checks as $check) {
             try {
@@ -67,16 +69,9 @@ final class HealthMiddleware implements MiddlewareInterface
                 $entry['detail'] = $result->detail;
             }
             $checks[$check->name()] = $entry;
-            $overall = self::worse($overall, $result->status);
+            $worst = max($worst, self::RANK[$result->status->value]);
         }
 
-        return ['status' => $overall->value, 'checks' => $checks];
-    }
-
-    private static function worse(HealthStatus $a, HealthStatus $b): HealthStatus
-    {
-        $rank = [HealthStatus::Up->value => 0, HealthStatus::Degraded->value => 1, HealthStatus::Down->value => 2];
-
-        return $rank[$a->value] >= $rank[$b->value] ? $a : $b;
+        return ['status' => array_search($worst, self::RANK, true) ?: HealthStatus::Up->value, 'checks' => $checks];
     }
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Keel\RateLimit;
 
+use Psr\Clock\ClockInterface;
+
 /**
  * Counters in the memory of the current process: per worker, lost on restart. Right for tests
  * and single-worker setups; use ApcuCounters or your own store otherwise.
@@ -13,9 +15,11 @@ final class InMemoryCounters implements CounterStorage
     /** @var array<string, array{0: int, 1: int}> key => [count, expires at] */
     private array $counters = [];
 
+    public function __construct(private readonly ?ClockInterface $clock = null) {}
+
     public function increment(string $key, int $ttl): int
     {
-        $now = time();
+        $now = $this->clock?->now()->getTimestamp() ?? time();
         if (count($this->counters) > 10_000) {
             $this->counters = array_filter($this->counters, static fn(array $c): bool => $c[1] > $now);
         }

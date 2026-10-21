@@ -14,6 +14,7 @@ use Keel\Auth\BearerTokenAuthenticator;
 use Keel\Auth\HmacAuthenticator;
 use Keel\Auth\HmacSecrets;
 use Keel\Auth\Identity;
+use Keel\Auth\Principal;
 use Keel\Auth\PrincipalResolver;
 use Keel\Auth\SecurityScheme;
 use Keel\Container\Definitions;
@@ -38,7 +39,7 @@ use Psr\Clock\ClockInterface;
 #[CoversClass(SecurityScheme::class)]
 final class AuthTest extends TestCase
 {
-    private function client(bool $globalMiddleware = true): TestClient
+    private static function definitions(): Definitions
     {
         $definitions = new Definitions();
         $definitions->set(Tokens::class)->alias(PrincipalResolver::class)->alias(HmacSecrets::class);
@@ -48,7 +49,12 @@ final class AuthTest extends TestCase
             HmacAuthenticator::class,
         ]));
 
-        return TestClient::forKernel(Kernel::build($definitions, [AccountController::class], $globalMiddleware ? [AuthMiddleware::class] : []));
+        return $definitions;
+    }
+
+    private function client(bool $globalMiddleware = true): TestClient
+    {
+        return TestClient::forKernel(Kernel::build(self::definitions(), [AccountController::class], $globalMiddleware ? [AuthMiddleware::class] : []));
     }
 
     public function testAnonymousRequestToProtectedRouteIs401WithEveryChallenge(): void
@@ -100,7 +106,60 @@ final class AuthTest extends TestCase
     {
         $client = $this->client();
         $client->get('/me', ['X-Api-Key' => 'user-token'])->assertOk()->assertJsonPath('id', 'u1');
-        $client->get('/me', ['X-Api-Key' => 'wrong'])->assertProblem(401, 'Invalid API key');
+        $client->get('/me', ['X-Api-Key' => ' user-token '])->assertOk()->assertJsonPath('id', 'u1');
+        $client->get('/me', ['X-Api-Key' => 'wrong'])->assertProblem(401, 'Invalid API key')->assertHeader('WWW-Authenticate', 'ApiKey header="X-Api-Key"');
+    }
+
+    public function testHmacHeaderParsingEdges(): void
+    {
+        $body = '';
+        $now = time();
+        $signed = HmacAuthenticator::sign('svc', 'top-secret', 'post', '/ingest', $body, $now);
+        $client = $this->client();
+        $client->request('POST', '/ingest', ['Authorization' => $signed], $body)->assertOk()->assertJson(['key' => 'svc']);
+        $client->request('POST', '/ingest', ['Authorization' => 'hmac' . substr($signed, 4)], $body)->assertOk();
+        $upperHex = substr($signed, 0, -64) . strtoupper(substr($signed, -64));
+        $client->request('POST', '/ingest', ['Authorization' => $upperHex], $body)->assertOk();
+        $client->request('POST', '/ingest', ['Authorization' => $signed . ' extra'], $body)->assertProblem(401, 'Malformed HMAC authorization header');
+
+        $authenticator = new HmacAuthenticator(new Tokens());
+        $principal = $authenticator->authenticate(new ServerRequest('POST', 'http://localhost/ingest', ['Authorization' => $signed]));
+        self::assertInstanceOf(Identity::class, $principal);
+        self::assertSame('hmac', $principal->get('scheme'));
+        self::assertSame('http', $authenticator->securityScheme()->definition['type']);
+    }
+
+    public function testHmacToleranceIsInclusive(): void
+    {
+        $clock = new class implements ClockInterface {
+            public function now(): \DateTimeImmutable
+            {
+                return new \DateTimeImmutable('@1700000000');
+            }
+        };
+        $authenticator = new HmacAuthenticator(new Tokens(), 60, $clock);
+        $request = static fn(int $timestamp): ServerRequest => new ServerRequest('GET', 'http://localhost/x', ['Authorization' => HmacAuthenticator::sign('svc', 'top-secret', 'GET', '/x', '', $timestamp)]);
+
+        self::assertNotNull($authenticator->authenticate($request(1700000000 - 60)));
+        $this->expectExceptionMessage('Signature timestamp out of range');
+        $authenticator->authenticate($request(1700000000 - 61));
+    }
+
+    public function testIdentityAttributesAndPrincipalLookup(): void
+    {
+        $identity = new Identity('u9', ['ops'], ['tenant' => 'acme', 'flag' => null]);
+        self::assertSame('acme', $identity->get('tenant', 'other'));
+        self::assertSame('dflt', $identity->get('missing', 'dflt'));
+        self::assertSame('dflt', $identity->get('flag', 'dflt'), 'a null attribute falls back like a missing one');
+        self::assertSame(['tenant' => 'acme', 'flag' => null], $identity->attributes());
+        self::assertTrue($identity->hasRole('ops'));
+        self::assertFalse($identity->hasRole('admin'));
+
+        $request = new ServerRequest('GET', '/');
+        self::assertNull(Authentication::principal($request));
+        self::assertNull(Authentication::principal($request->withAttribute(Principal::class, 'not a principal')));
+        self::assertSame($identity, Authentication::principal(Authentication::attach($request, $identity)));
+        self::assertSame($identity, Authentication::attach($request, $identity)->getAttribute(Identity::class));
     }
 
     public function testHmacSignedRequest(): void
@@ -168,6 +227,8 @@ final class AuthTest extends TestCase
         $kernel = Kernel::build($definitions, [AccountController::class]);
         $exception = $kernel->container->get(Authentication::class)->unauthorized();
         self::assertSame([], $exception->headers);
+        self::assertSame([], $kernel->container->get(Authentication::class)->authenticators());
+        self::assertCount(3, Kernel::build(self::definitions(), [AccountController::class])->container->get(Authentication::class)->authenticators());
         TestClient::forKernel($kernel)->get('/me')->assertProblem(401)->assertHeaderMissing('WWW-Authenticate');
     }
 }
