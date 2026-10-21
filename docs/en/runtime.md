@@ -45,6 +45,12 @@ the kernel follows and the application must follow too:
 The `examples/hello` route `/stats` shows `request_hits` (always 1, the service is `Resettable`)
 and `worker_hits` (grows in worker mode, 1 under php-fpm).
 
+## Verified live
+
+The example was run under FrankenPHP 1.12.6 (embedded PHP 8.5.8) in worker mode with
+`examples/hello/Caddyfile`: one pid for every request, `request_hits` equal to 1 in every
+response, `worker_hits` growing, 300 consecutive requests all answered 200, no errors in the log.
+
 ## Example configurations
 
 - `examples/hello/Caddyfile`: `frankenphp run --config examples/hello/Caddyfile`

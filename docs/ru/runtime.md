@@ -45,6 +45,12 @@ exit(Runtime::run($kernel));
 Пример `examples/hello`: маршрут `/stats` показывает `request_hits` (всегда 1, сервис
 `Resettable`) и `worker_hits` (растёт в worker-режиме, 1 под php-fpm).
 
+## Проверено вживую
+
+Пример прогнан под FrankenPHP 1.12.6 (встроенный PHP 8.5.8) в worker mode с `examples/hello/Caddyfile`:
+один pid на все запросы, `request_hits` равен 1 в каждом ответе, `worker_hits` растёт, 300 запросов
+подряд — все 200, ошибок в логе нет.
+
 ## Конфигурации примера
 
 - `examples/hello/Caddyfile` — `frankenphp run --config examples/hello/Caddyfile`
