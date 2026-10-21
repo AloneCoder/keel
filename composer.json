@@ -20,10 +20,11 @@
         "friendsofphp/php-cs-fixer": "^3.75",
         "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^12.0",
-        "spiral/roadrunner-http": "^4.2"
+        "spiral/roadrunner-http": "^4.2",
+        "symfony/console": "^7.3|^8.0"
     },
     "suggest": {
-        "symfony/console": "Console runtime and keel CLI commands",
+        "symfony/console": "Console runtime and keel:* commands (any 7.3+ or 8.x)",
         "monolog/monolog": "PSR-3 logger implementation",
         "spiral/roadrunner-http": "RoadRunner runtime adapter"
     },

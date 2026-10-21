@@ -87,7 +87,13 @@ final class Planner
                 return ArgumentPlan::service($name, $class);
             }
 
-            return ArgumentPlan::optionalService($name, $class, $parameter->getDefaultValue());
+            $default = $parameter->getDefaultValue();
+            if (is_object($default) && !$default instanceof \UnitEnum) {
+                // "new Foo()" in the initializer: the class is autowirable, let the container build it.
+                return ArgumentPlan::service($name, $class);
+            }
+
+            return ArgumentPlan::optionalService($name, $class, $default);
         }
 
         if ($parameter->isDefaultValueAvailable()) {

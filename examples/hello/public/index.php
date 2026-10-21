@@ -2,10 +2,7 @@
 
 declare(strict_types=1);
 
-use Keel\Container\Definitions;
-use Keel\Examples\Hello\HelloController;
-use Keel\Kernel\Kernel;
-use Keel\Runtime\Runtime;
+use Keel\App\App;
 
 require dirname(__DIR__, 3) . '/vendor/autoload.php';
 
@@ -13,6 +10,5 @@ require dirname(__DIR__, 3) . '/vendor/autoload.php';
 //   php -S 127.0.0.1:8080 -t examples/hello/public examples/hello/public/index.php   -> FpmRuntime
 //   frankenphp run --config examples/hello/Caddyfile                                -> FrankenPhpRuntime (worker mode)
 //   rr serve (with KEEL_RUNTIME=roadrunner or RR_MODE=http)                         -> RoadRunnerRuntime
-$kernel = Kernel::build(new Definitions(), [HelloController::class], debug: true);
-
-exit(Runtime::run($kernel));
+// App::boot() reads .env and config/*.php, discovers src/, and in prod uses var/cache/<env>/.
+exit(App::boot(dirname(__DIR__))->run());

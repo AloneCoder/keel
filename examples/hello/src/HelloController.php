@@ -8,10 +8,15 @@ use Keel\Http\Attribute\FromBody;
 use Keel\Routing\Attribute\Get;
 use Keel\Routing\Attribute\Post;
 use Keel\Routing\Attribute\Status;
+use Psr\EventDispatcher\EventDispatcherInterface;
 
 final class HelloController
 {
-    public function __construct(private readonly Stats $stats) {}
+    public function __construct(
+        private readonly Stats $stats,
+        private readonly EventDispatcherInterface $events,
+        private readonly GreetingLog $log,
+    ) {}
 
     /** @return array<string, int|string> */
     #[Get('/stats', name: 'stats')]
@@ -38,7 +43,10 @@ final class HelloController
     #[Get('/hello/{name}', name: 'hello')]
     public function hello(string $name): string
     {
-        return '<h1>Hello, ' . htmlspecialchars($name, \ENT_QUOTES) . '!</h1>';
+        $this->events->dispatch(new Greeted($name));
+
+        return '<h1>Hello, ' . htmlspecialchars($name, \ENT_QUOTES) . '!</h1>'
+            . '<p>Greeted so far: ' . htmlspecialchars(implode(', ', $this->log->names), \ENT_QUOTES) . '</p>';
     }
 
     /**
