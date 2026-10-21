@@ -16,6 +16,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Matches the request and stores the RouteMatch as a request attribute, or fails with 404/405.
+ *
+ * @internal
  */
 final class RoutingMiddleware implements MiddlewareInterface
 {

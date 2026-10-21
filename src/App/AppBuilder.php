@@ -29,6 +29,8 @@ use Psr\Log\LoggerInterface;
 /**
  * The build side of App: discovery, definitions, cache writing. Loaded in debug mode, when a
  * cache is missing and by keel:compile; a production boot with warm caches never touches it.
+ *
+ * @internal Build side of App; not part of the public API.
  */
 final class AppBuilder
 {

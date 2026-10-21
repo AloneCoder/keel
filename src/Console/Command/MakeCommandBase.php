@@ -13,6 +13,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * Shared machinery of the keel:make:* generators: the project's PSR-4 namespace for src/,
  * class name normalisation and safe file writing (never overwrites without --force).
+ *
+ * @internal
  */
 abstract class MakeCommandBase extends Command
 {

@@ -1,0 +1,72 @@
+site_name: Keel
+site_description: Worker-first PHP micro-framework
+site_url: https://alonecoder.github.io/keel/
+repo_url: https://github.com/AloneCoder/keel
+edit_uri: edit/main/docs/
+docs_dir: docs
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  palette:
+    - scheme: default
+      primary: blue grey
+      toggle:
+        icon: material/weather-night
+        name: Dark
+    - scheme: slate
+      primary: blue grey
+      toggle:
+        icon: material/weather-sunny
+        name: Light
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - toc:
+      permalink: true
+plugins:
+  - search
+  - i18n:
+      docs_structure: folder
+      fallback_to_default: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: ru
+          name: Русский
+          build: true
+          nav_translations:
+            Overview: Обзор
+            Design: Проектирование
+            Components: Компоненты
+            Landscape analysis: Анализ рынка
+            Design decisions: Проектные решения
+            Container: Контейнер
+            Routing: Роутинг
+            HTTP and kernel: HTTP и ядро
+            Runtimes: Рантаймы
+            Application: Приложение
+            Testing: Тестирование
+            Sessions: Сессии
+            API stability: Стабильность API
+nav:
+  - Overview: index.md
+  - Design:
+      - Landscape analysis: analysis.md
+      - Design decisions: design.md
+      - API stability: api.md
+  - Components:
+      - Container: container.md
+      - Routing: routing.md
+      - HTTP and kernel: http.md
+      - Runtimes: runtime.md
+      - Application: app.md
+      - Sessions: session.md
+      - Testing: testing.md

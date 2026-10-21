@@ -6,6 +6,8 @@ namespace Keel\Container\Reflection;
 
 /**
  * Where one constructor/factory argument comes from.
+ *
+ * @internal
  */
 final readonly class ArgumentPlan
 {

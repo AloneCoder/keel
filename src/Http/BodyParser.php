@@ -10,6 +10,8 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * Decodes the request body into an array: JSON for application/json and *+json,
  * otherwise the already parsed body (form data) when it is an array.
+ *
+ * @internal
  */
 final class BodyParser
 {

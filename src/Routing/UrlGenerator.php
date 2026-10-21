@@ -6,6 +6,9 @@ namespace Keel\Routing;
 
 use Keel\Routing\Exception\RoutingException;
 
+/**
+ * @internal
+ */
 final class UrlGenerator
 {
     public function __construct(

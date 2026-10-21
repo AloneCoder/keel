@@ -8,6 +8,8 @@ use Keel\Routing\Exception\RoutingException;
 
 /**
  * Turns "/users/{id:\d+}/posts/{slug}" into a regex and the ordered list of placeholder names.
+ *
+ * @internal
  */
 final class PathParser
 {

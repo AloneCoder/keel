@@ -12,6 +12,8 @@ use Keel\Container\Ref;
 /**
  * Turns reflection of a constructor or factory into a list of argument plans.
  * Used by the runtime instantiator and by the compiler, so both resolve identically.
+ *
+ * @internal
  */
 final class Planner
 {

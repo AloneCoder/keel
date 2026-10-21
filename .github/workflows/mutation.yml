@@ -1,0 +1,27 @@
+name: Mutation testing
+
+on:
+  push:
+    branches: [main]
+    paths: ['src/Container/**', 'src/Routing/**', 'tests/**', 'infection.json5', '.github/workflows/mutation.yml']
+  workflow_dispatch:
+
+jobs:
+  infection:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: pcov
+          tools: composer:v2
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: vendor/bin/infection --threads=4 --min-msi=80 --min-covered-msi=85 --logger-github --no-progress
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: infection-logs
+          path: var/infection*.log

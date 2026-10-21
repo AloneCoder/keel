@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Keel\Routing;
 
+/**
+ * @internal
+ */
 final class Matcher
 {
     public function __construct(private readonly CompiledRoutes $routes) {}

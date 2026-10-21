@@ -10,6 +10,8 @@ use Keel\Routing\Exception\RoutingException;
  * Builds match tables: a hash for static paths and, per method, chunks of alternation regexes
  * where the number of capturing groups identifies the matched route (FastRoute's
  * "group count" technique). One preg_match per chunk instead of one per route.
+ *
+ * @internal
  */
 final class RouteCompiler
 {

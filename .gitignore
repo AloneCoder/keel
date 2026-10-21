@@ -7,3 +7,6 @@
 /benchmarks/vendor/
 /benchmarks/var/
 /benchmarks/composer.lock
+/var/
+/site/
+/.venv-docs/

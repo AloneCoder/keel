@@ -10,6 +10,8 @@ namespace Keel\Routing;
  * @phpstan-type RouteArray array{path: string, methods: list<string>, handler: array{0: class-string, 1: string}, name: string|null, middleware: list<class-string<\Psr\Http\Server\MiddlewareInterface>>, status: int|null}
  * @phpstan-type DynamicChunk array{regex: string, map: array<int, array{0: int, 1: list<string>}>}
  * @phpstan-type Exported array{routes: list<RouteArray>, static: array<string, array<string, int>>, dynamic: array<string, list<DynamicChunk>>, names: array<string, int>}
+ *
+ * @internal
  */
 final class CompiledRoutes
 {

@@ -7,6 +7,8 @@ namespace Keel\Discovery;
 /**
  * Finds class-like declarations in PHP files without loading them: tokens only.
  * Files without "#[" are skipped early, since discovery is attribute-driven.
+ *
+ * @internal
  */
 final class ClassScanner
 {

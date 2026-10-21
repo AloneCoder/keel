@@ -14,6 +14,8 @@ use Keel\Container\Definition;
 /**
  * Copies class-level container attributes onto a definition.
  * Explicit fluent calls made afterwards take precedence.
+ *
+ * @internal
  */
 final class ClassAttributes
 {

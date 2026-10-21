@@ -17,6 +17,7 @@
 - [Приложение: конфиг, discovery, события, консоль](docs/ru/app.md) · [English](docs/en/app.md)
 - [Тестирование](docs/ru/testing.md) · [English](docs/en/testing.md)
 - [Сессии и подписанные cookie](docs/ru/session.md) · [English](docs/en/session.md)
+- [Стабильность API](docs/ru/api.md) · [English](docs/en/api.md)
 
 Попробовать пример:
 

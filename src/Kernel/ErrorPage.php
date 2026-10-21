@@ -10,6 +10,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * HTML rendering of a Problem Details payload for browsers. In debug mode it shows the
  * exception chain, the trace and the request, with a "Copy as Markdown" button that produces
  * a bug-report-ready text; in production only the status and title.
+ *
+ * @internal
  */
 final class ErrorPage
 {

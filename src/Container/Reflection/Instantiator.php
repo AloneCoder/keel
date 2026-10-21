@@ -11,6 +11,8 @@ use Keel\Container\Exception\ContainerException;
 /**
  * Creates services from definitions using reflection. The runtime container uses it
  * for everything; the compiled container uses it only for classes unknown at compile time.
+ *
+ * @internal
  */
 final class Instantiator
 {

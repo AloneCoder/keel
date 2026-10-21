@@ -17,6 +17,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Final handler of the kernel pipeline: runs the route's own middleware, then calls the
  * controller method with resolved arguments and turns the result into a response.
+ *
+ * @internal
  */
 final class DispatchHandler implements RequestHandlerInterface
 {
