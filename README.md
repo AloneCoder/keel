@@ -6,7 +6,7 @@ A small, worker-first PHP micro-framework: PSR-7/11/14/15/17 all the way, attrib
 routing with scoped discovery, a compiled container and router, and the same code running
 under php-fpm, FrankenPHP worker mode and RoadRunner.
 
-Status: M4 done (container, routing, HTTP kernel, runtimes, app bootstrap with config, discovery, events and console). See the roadmap in the design document.
+Status: 0.1.0, the whole core is in place. See [CHANGELOG.md](CHANGELOG.md). See the roadmap in the design document.
 
 - [Landscape analysis](docs/en/analysis.md) · [по-русски](docs/ru/analysis.md)
 - [Design decisions and roadmap](docs/en/design.md) · [по-русски](docs/ru/design.md)
@@ -32,5 +32,29 @@ composer test
 composer stan
 composer cs
 ```
+
+## Benchmarks
+
+In-process, same route (`GET /json/42`, JSON body), production mode with warm caches,
+PHP 8.4.21 with opcache, JIT off, Apple Silicon laptop, 30 000 iterations after warm-up.
+The number measures framework overhead per request; the SAPI and the network are excluded.
+Reproduce with `cd benchmarks && composer install && php -d opcache.enable_cli=1 run.php`.
+
+| Framework | boot (ms) | µs / request | requests / s | memory after boot |
+|---|---|---|---|---|
+| Keel 0.1.0 (compiled container, cached routes) | 11.8 | 4.8 | 208 000 | 0.21 MB |
+| Slim 4.15 (closure routes, no container) | 5.9 | 4.8 | 206 000 | 0.07 MB |
+| Symfony 8.1 MicroKernel (FrameworkBundle, `#[Route]`) | 29.5 | 31.0 | 32 000 | 0.52 MB |
+
+Keel does more work per request than the Slim app in this table (attribute controller,
+argument resolution with type casting, Problem Details handler, container-resolved
+middleware) at the same cost. Symfony's number includes its full HttpKernel event cycle
+and `terminate()`.
+
+## Roadmap
+
+M0–M5 of the [design document](docs/en/design.md) are done. Next: per-component packages
+(`keel/container`, `keel/router`), an HTML error page for debug mode, a Fibers-based runtime
+experiment, and real-world adoption feedback before 1.0.
 
 License: MIT.

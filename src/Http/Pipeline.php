@@ -23,6 +23,9 @@ final class Pipeline implements RequestHandlerInterface
     /** @var array<class-string<MiddlewareInterface>, MiddlewareInterface> */
     private array $resolved = [];
 
+    /** @var array<int, RequestHandlerInterface> handler chain, built once and reused for every request */
+    private array $handlers = [];
+
     /**
      * @param iterable<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware
      */
@@ -45,7 +48,7 @@ final class Pipeline implements RequestHandlerInterface
             return $this->fallback;
         }
 
-        return new CallableHandler(
+        return $this->handlers[$index] ??= new CallableHandler(
             fn(ServerRequestInterface $request): ResponseInterface => $this->resolve($index)->process($request, $this->next($index + 1)),
         );
     }

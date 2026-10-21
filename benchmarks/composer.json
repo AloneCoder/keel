@@ -1,0 +1,29 @@
+{
+    "name": "keel/benchmarks",
+    "description": "In-process benchmarks: Keel vs Slim 4 vs Symfony MicroKernel",
+    "type": "project",
+    "license": "MIT",
+    "repositories": [
+        { "type": "path", "url": "..", "options": { "symlink": true } }
+    ],
+    "require": {
+        "php": ">=8.4",
+        "keel/framework": "@dev",
+        "slim/slim": "^4.15",
+        "nyholm/psr7": "^1.8",
+        "symfony/framework-bundle": "^7.3|^8.0",
+        "symfony/http-kernel": "^7.3|^8.0",
+        "symfony/routing": "^7.3|^8.0",
+        "symfony/dependency-injection": "^7.3|^8.0",
+        "symfony/config": "^7.3|^8.0",
+        "symfony/yaml": "^7.3|^8.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Keel\\Benchmarks\\": "src/",
+            "Keel\\Benchmarks\\KeelApp\\": "keel-app/src/"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

@@ -4,3 +4,6 @@
 /.php-cs-fixer.cache
 /composer.lock
 /examples/*/var/
+/benchmarks/vendor/
+/benchmarks/var/
+/benchmarks/composer.lock

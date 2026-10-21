@@ -19,6 +19,21 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class ArgumentResolver
 {
+    private const int REQUEST = 0;
+
+    private const int MATCH = 1;
+
+    private const int ROUTE = 2;
+
+    private const int QUERY = 3;
+
+    private const int BODY = 4;
+
+    private const int DYNAMIC = 5;
+
+    /** @var array<string, list<array{0: int, 1: \ReflectionParameter, 2: string|null}>> per handler: source, parameter, class */
+    private array $plans = [];
+
     public function __construct(
         private readonly ContainerInterface $container,
         private readonly Hydrator $hydrator = new Hydrator(),
@@ -30,43 +45,64 @@ final class ArgumentResolver
      */
     public function resolve(\ReflectionFunctionAbstract $handler, ServerRequestInterface $request, RouteMatch $match): array
     {
+        $key = self::describe($handler);
+        $plan = $this->plans[$key] ??= self::plan($handler);
+
         $arguments = [];
-        foreach ($handler->getParameters() as $parameter) {
-            $arguments[] = $this->argument($parameter, $request, $match, $handler);
+        foreach ($plan as [$source, $parameter, $class]) {
+            $arguments[] = match ($source) {
+                self::REQUEST => $request,
+                self::MATCH => $match,
+                self::ROUTE => $match->route,
+                self::QUERY => $this->fromQuery($parameter, $class, $request),
+                self::BODY => $this->fromBody($parameter, $class, $request),
+                default => $this->argument($parameter, $class, $request, $match, $handler),
+            };
         }
 
         return $arguments;
     }
 
+    /**
+     * Decides once per handler where each parameter comes from; attributes are not re-read per request.
+     *
+     * @return list<array{0: int, 1: \ReflectionParameter, 2: string|null}>
+     */
+    private static function plan(\ReflectionFunctionAbstract $handler): array
+    {
+        $plan = [];
+        foreach ($handler->getParameters() as $parameter) {
+            $type = $parameter->getType();
+            $class = $type instanceof \ReflectionNamedType && !$type->isBuiltin() ? $type->getName() : null;
+
+            $source = self::DYNAMIC;
+            if ($class !== null && is_a(ServerRequestInterface::class, $class, true)) {
+                $source = self::REQUEST;
+            } elseif ($class === RouteMatch::class) {
+                $source = self::MATCH;
+            } elseif ($class === Route::class) {
+                $source = self::ROUTE;
+            } elseif ($parameter->getAttributes(FromQuery::class) !== []) {
+                $source = self::QUERY;
+            } elseif ($parameter->getAttributes(FromBody::class) !== []) {
+                $source = self::BODY;
+            }
+
+            $plan[] = [$source, $parameter, $class];
+        }
+
+        return $plan;
+    }
+
     private function argument(
         \ReflectionParameter $parameter,
+        ?string $class,
         ServerRequestInterface $request,
         RouteMatch $match,
         \ReflectionFunctionAbstract $handler,
     ): mixed {
         $name = $parameter->getName();
         $type = $parameter->getType();
-        $class = $type instanceof \ReflectionNamedType && !$type->isBuiltin() ? $type->getName() : null;
-
-        if ($class !== null) {
-            if (is_a(ServerRequestInterface::class, $class, true)) {
-                return $request;
-            }
-            if ($class === RouteMatch::class) {
-                return $match;
-            }
-            if ($class === Route::class) {
-                return $match->route;
-            }
-        }
-
-        if ($parameter->getAttributes(FromQuery::class) !== []) {
-            return $this->fromQuery($parameter, $class, $request);
-        }
-
-        if ($parameter->getAttributes(FromBody::class) !== []) {
-            return $this->fromBody($parameter, $class, $request);
-        }
 
         if (array_key_exists($name, $match->params)) {
             return $this->hydrator->cast($match->params[$name], $parameter, $name);
