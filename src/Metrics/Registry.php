@@ -65,7 +65,7 @@ final class Registry
      */
     public function set(string $name, array $labelValues, float $value): void
     {
-        $this->storage->set($this->key($name, 'gauge', $labelValues), (int) round($value * self::SCALE));
+        $this->storage->set($this->key($name, 'gauge', $labelValues), self::scaled($value));
     }
 
     /**
@@ -80,7 +80,7 @@ final class Registry
             }
         }
         $this->storage->add($base . self::SEPARATOR . '+Inf', 1);
-        $this->storage->add($base . self::SEPARATOR . 'sum', (int) round($value * self::SCALE));
+        $this->storage->add($base . self::SEPARATOR . 'sum', self::scaled($value));
     }
 
     public function has(string $name): bool
@@ -89,24 +89,27 @@ final class Registry
     }
 
     /**
-     * Prometheus text exposition (version 0.0.4), metrics in registration order.
+     * Prometheus text exposition (version 0.0.4): metrics in registration order, histogram
+     * buckets in ascending order with a line for every configured bucket, then +Inf, _count, _sum.
      */
     public function render(): string
     {
+        /** @var array<string, array<string, array<string, int>>> $samples metric => labels => suffix => value */
         $samples = [];
         foreach ($this->storage->all() as $key => $value) {
             $parts = explode(self::SEPARATOR, $key);
-            $samples[$parts[0]][] = [$parts[1] ?? '', $parts[2] ?? '', $value];
+            $samples[$parts[0]][$parts[1] ?? ''][$parts[2] ?? ''] = $value;
         }
 
         $out = '';
         foreach ($this->metrics as $name => $metric) {
             $out .= sprintf("# HELP %s %s\n# TYPE %s %s\n", $name, self::escapeHelp($metric['help']), $name, $metric['type']);
-            foreach ($samples[$name] ?? [] as [$labels, $suffix, $value]) {
+            foreach ($samples[$name] ?? [] as $labels => $values) {
+                $labels = (string) $labels;
                 $out .= match ($metric['type']) {
-                    'counter' => sprintf("%s%s %d\n", $name, $labels, $value),
-                    'gauge' => sprintf("%s%s %s\n", $name, $labels, self::float($value / self::SCALE)),
-                    default => self::histogramLine($name, $labels, $suffix, $value),
+                    'counter' => sprintf("%s%s %d\n", $name, $labels, $values[''] ?? 0),
+                    'gauge' => sprintf("%s%s %s\n", $name, $labels, self::float(($values[''] ?? 0) / self::SCALE)),
+                    default => self::histogramLines($name, $labels, $metric['buckets'], $values),
                 };
             }
         }
@@ -150,24 +153,34 @@ final class Registry
         return $name . self::SEPARATOR . ($pairs === [] ? '' : '{' . implode(',', $pairs) . '}');
     }
 
-    private static function histogramLine(string $name, string $labels, string $suffix, int $value): string
+    /**
+     * @param list<float>        $buckets
+     * @param array<string, int> $values bucket bound, "+Inf" or "sum" => value
+     */
+    private static function histogramLines(string $name, string $labels, array $buckets, array $values): string
     {
-        if ($suffix === 'sum') {
-            return sprintf("%s_sum%s %s\n", $name, $labels, self::float($value / self::SCALE));
+        $inner = $labels === '' ? '' : substr($labels, 1, -1) . ',';
+        $out = '';
+        foreach ($buckets as $bound) {
+            $bound = self::bound($bound);
+            $out .= sprintf("%s_bucket{%sle=\"%s\"} %d\n", $name, $inner, $bound, $values[$bound] ?? 0);
         }
-        if ($suffix === '+Inf') {
-            $inner = $labels === '' ? 'le="+Inf"' : substr($labels, 1, -1) . ',le="+Inf"';
+        $count = $values['+Inf'] ?? 0;
 
-            return sprintf("%s_bucket{%s} %d\n%s_count%s %d\n", $name, $inner, $value, $name, $labels, $value);
-        }
-        $inner = $labels === '' ? 'le="' . $suffix . '"' : substr($labels, 1, -1) . ',le="' . $suffix . '"';
-
-        return sprintf("%s_bucket{%s} %d\n", $name, $inner, $value);
+        return $out
+            . sprintf("%s_bucket{%sle=\"+Inf\"} %d\n", $name, $inner, $count)
+            . sprintf("%s_count%s %d\n", $name, $labels, $count)
+            . sprintf("%s_sum%s %s\n", $name, $labels, self::float(($values['sum'] ?? 0) / self::SCALE));
     }
 
+    /**
+     * Shortest round-trip spelling of a bucket bound ("0.1", "1", "2.5e-7"), so distinct bounds never share a line.
+     */
     private static function bound(float $bound): string
     {
-        return self::float($bound);
+        $text = (string) json_encode($bound);
+
+        return str_ends_with($text, '.0') ? substr($text, 0, -2) : $text;
     }
 
     private static function float(float $value): string
@@ -177,9 +190,28 @@ final class Registry
         return $text === '' || $text === '-0' ? '0' : $text;
     }
 
+    /**
+     * Value scaled to an integer, clamped to the integer range instead of overflowing.
+     */
+    private static function scaled(float $value): int
+    {
+        $scaled = round($value * self::SCALE);
+        if (is_nan($scaled)) {
+            return 0;
+        }
+        if ($scaled >= 9.2e18) {
+            return \PHP_INT_MAX;
+        }
+        if ($scaled <= -9.2e18) {
+            return \PHP_INT_MIN;
+        }
+
+        return (int) $scaled;
+    }
+
     private static function escapeLabel(string $value): string
     {
-        return str_replace(['\\', "\n", '"'], ['\\\\', '\\n', '\\"'], $value);
+        return str_replace(['\\', "\n", '"', self::SEPARATOR], ['\\\\', '\\n', '\\"', ''], $value);
     }
 
     private static function escapeHelp(string $value): string

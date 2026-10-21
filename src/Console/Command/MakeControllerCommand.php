@@ -24,10 +24,17 @@ final class MakeControllerCommand extends MakeCommandBase
     {
         $name = $input->getArgument('name');
         $name = self::studly(is_string($name) ? $name : 'Home');
+        if ($name === '' || !self::isClassName($name)) {
+            return self::invalid($output, 'Controller name must be a class name, e.g. User or UserController');
+        }
         $class = str_ends_with($name, 'Controller') ? $name : $name . 'Controller';
         $resource = strtolower((string) preg_replace('/Controller$/', '', $class));
         $prefix = $input->getOption('prefix');
         $prefix = is_string($prefix) && $prefix !== '' ? '/' . trim($prefix, '/') : '/' . $resource;
+        $prefix = self::literal($prefix);
+        $index = self::literal($resource . '.index');
+        $show = self::literal($resource . '.show');
+        $key = self::literal($resource);
         [$namespace] = $this->rootNamespace();
 
         $source = <<<PHP
@@ -40,18 +47,18 @@ final class MakeControllerCommand extends MakeCommandBase
             use Keel\\Routing\\Attribute\\Get;
             use Keel\\Routing\\Attribute\\Prefix;
 
-            #[Prefix('{$prefix}')]
+            #[Prefix({$prefix})]
             final class {$class}
             {
                 /** @return array<string, mixed> */
-                #[Get('', name: '{$resource}.index')]
+                #[Get('', name: {$index})]
                 public function index(): array
                 {
-                    return ['{$resource}' => []];
+                    return [{$key} => []];
                 }
 
                 /** @return array<string, mixed> */
-                #[Get('/{id:\\d+}', name: '{$resource}.show')]
+                #[Get('/{id:\\d+}', name: {$show})]
                 public function show(int \$id): array
                 {
                     return ['id' => \$id];

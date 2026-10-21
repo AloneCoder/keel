@@ -10,6 +10,7 @@ use Keel\Http\CallableHandler;
 use Keel\Http\Pipeline;
 use Keel\Tests\Kernel\Fixtures\ClassMiddleware;
 use Keel\Tests\Kernel\Fixtures\GlobalMiddleware;
+use Keel\Tests\Kernel\Fixtures\StatefulMiddleware;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -58,5 +59,26 @@ final class PipelineTest extends TestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('not a PSR-15 middleware');
         $pipeline->handle(new ServerRequest('GET', '/'));
+    }
+
+
+    public function testMiddlewareLifetimeBelongsToTheContainer(): void
+    {
+        $factory = new Psr17Factory();
+        $fallback = new CallableHandler(static fn(): ResponseInterface => $factory->createResponse());
+
+        $transient = new Definitions();
+        $transient->set(StatefulMiddleware::class)->transient();
+        $pipeline = new Pipeline([StatefulMiddleware::class], $fallback, new Container($transient));
+        self::assertSame('1', $pipeline->handle(new ServerRequest('GET', '/'))->getHeaderLine('X-Stateful-Calls'));
+        self::assertSame('1', $pipeline->handle(new ServerRequest('GET', '/'))->getHeaderLine('X-Stateful-Calls'), 'transient: a fresh instance per request, nothing carries over');
+
+        $shared = new Definitions();
+        $shared->set(StatefulMiddleware::class);
+        $container = new Container($shared);
+        $pipeline = new Pipeline([StatefulMiddleware::class], $fallback, $container);
+        $pipeline->handle(new ServerRequest('GET', '/'));
+        self::assertSame('2', $pipeline->handle(new ServerRequest('GET', '/'))->getHeaderLine('X-Stateful-Calls'), 'shared: the one container instance');
+        self::assertSame(2, $container->get(StatefulMiddleware::class)->calls);
     }
 }

@@ -15,6 +15,7 @@ use Keel\Routing\Attribute\Delete;
 use Keel\Routing\Attribute\Get;
 use Keel\Routing\Attribute\Post;
 use Keel\Routing\Attribute\Prefix;
+use Keel\Routing\Attribute\Route;
 use Keel\Routing\Attribute\Status;
 use Psr\Http\Message\ResponseInterface;
 
@@ -57,6 +58,16 @@ final class TaskController
     {
         return '<html></html>';
     }
+
+    #[Get('/{id:\d+}/owner')]
+    #[Response(404, 'No such task')]
+    public function owner(int $id): TaskView
+    {
+        throw new \LogicException('not called');
+    }
+
+    #[Route('/sync', ['GET', 'POST'])]
+    public function sync(): void {}
 
     #[Get('/secret')]
     #[Hidden]

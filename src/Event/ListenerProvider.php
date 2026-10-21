@@ -76,6 +76,14 @@ final class ListenerProvider implements ListenerProviderInterface
             foreach ($method->getAttributes(Listener::class) as $attribute) {
                 $listener = $attribute->newInstance();
                 $event = $listener->event ?? self::eventTypeOf($method);
+                if (!class_exists($event) && !interface_exists($event)) {
+                    throw new \LogicException(sprintf(
+                        'Listener %s::%s names the unknown event class "%s"',
+                        $class->getName(),
+                        $method->getName(),
+                        $event,
+                    ));
+                }
                 $found[] = [$event, $method->getName(), $listener->priority];
             }
         }

@@ -81,6 +81,19 @@ final class EventDispatcherTest extends TestCase
         new EventDispatcher($provider)->dispatch(new Greeted('x'));
     }
 
+    public function testUnknownExplicitEventClassIsRejected(): void
+    {
+        $bad = new class {
+            /** @phpstan-ignore argument.type */
+            #[Listener(event: 'Nope\\Missing')]
+            public function on(object $event): void {}
+        };
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('names the unknown event class "Nope\Missing"');
+        new ListenerProvider()->addClass($bad::class);
+    }
+
     public function testUntypedListenerParameterIsRejected(): void
     {
         $bad = new class {

@@ -21,6 +21,8 @@ use Keel\Tests\App\Fixtures\Project\Src\HelloCommand;
 use Keel\Tests\App\Fixtures\Project\Src\PingCheck;
 use Keel\Tests\App\Fixtures\Project\Src\Shape;
 use Keel\Tests\App\Fixtures\Project\Src\Square;
+use Keel\Tests\Discovery\Fixtures\Inherited\ChildController;
+use Keel\Tests\Discovery\Fixtures\Inherited\ChildGreeter;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
@@ -102,6 +104,47 @@ final class DiscoveryTest extends TestCase
         $missing = self::discoverer($cache);
         $missing->clearCache();
         self::assertFileDoesNotExist($cache);
+    }
+
+    public function testSubclassesInheritAttributedMethodsFromTheirParent(): void
+    {
+        $discoverer = new Discoverer([__DIR__ . '/Fixtures/Inherited'])
+            ->add(new RouteDiscovery())
+            ->add(new ListenerDiscovery());
+
+        self::assertFalse($discoverer->run());
+        self::assertSame([ChildController::class], $discoverer->get(RouteDiscovery::class)->controllers(), 'the child file has no "#[" of its own');
+        self::assertSame([[ChildGreeter::class, 'onGreeted', Greeted::class, 0]], $discoverer->get(ListenerDiscovery::class)->listeners());
+    }
+
+    public function testClassThatCannotBeLoadedIsSkipped(): void
+    {
+        $discoverer = new Discoverer([__DIR__ . '/Fixtures/Unloadable'])->add(new RouteDiscovery());
+
+        self::assertFalse($discoverer->run());
+        self::assertSame([], $discoverer->get(RouteDiscovery::class)->controllers());
+    }
+
+    public function testStaleCacheEntriesAreDroppedOnRestore(): void
+    {
+        $listeners = new ListenerDiscovery();
+        $listeners->restore([
+            [GreetingLog::class, 'onGreeted', Greeted::class, 0],
+            [GreetingLog::class, 'renamedSinceTheCacheWasWritten', Greeted::class, 0],
+        ]);
+        self::assertSame([[GreetingLog::class, 'onGreeted', Greeted::class, 0]], $listeners->listeners());
+
+        $commands = new CommandDiscovery();
+        $commands->restore(['demo:hello' => HelloCommand::class, 'bogus' => GreetingLog::class]);
+        self::assertSame(['demo:hello' => HelloCommand::class], $commands->commands());
+    }
+
+    public function testStatReportsTheSameMetadataAsScanWithoutReadingFiles(): void
+    {
+        $scanner = new ClassScanner();
+        $scan = $scanner->scan([self::SRC, '/nonexistent']);
+
+        self::assertSame(['files' => $scan['files'], 'mtime' => $scan['mtime']], $scanner->stat([self::SRC, '/nonexistent']));
     }
 
     public function testUnknownDiscoveryIsReported(): void

@@ -77,8 +77,9 @@ final class Kernel implements RequestHandlerInterface
     }
 
     /**
-     * Registers what the kernel needs unless the application already did:
-     * nyholm/psr7 as every PSR-17 factory, the server request creator, Responder and ArgumentResolver.
+     * Registers what the kernel needs unless the application already did (as a definition, an alias
+     * or an instance under the interface id): nyholm/psr7 as every PSR-17 factory, the server request
+     * creator, Responder and ArgumentResolver.
      */
     public static function registerDefaults(Definitions $definitions): void
     {
@@ -92,14 +93,17 @@ final class Kernel implements RequestHandlerInterface
             UploadedFileFactoryInterface::class,
         ];
 
+        $instances = $definitions->instances();
+        $bound = static fn(string $id): bool => $definitions->definition($id) !== null || isset($aliases[$id]) || isset($instances[$id]);
+
         $psr17 = $definitions->definition(Psr17Factory::class) ?? $definitions->set(Psr17Factory::class);
         foreach ($factories as $interface) {
-            if (!isset($aliases[$interface])) {
+            if (!$bound($interface)) {
                 $psr17->alias($interface);
             }
         }
 
-        if ($definitions->definition(ServerRequestCreator::class) === null && !isset($aliases[ServerRequestCreatorInterface::class])) {
+        if ($definitions->definition(ServerRequestCreator::class) === null && !$bound(ServerRequestCreatorInterface::class)) {
             $definitions->set(ServerRequestCreator::class)->alias(ServerRequestCreatorInterface::class);
         }
         if ($definitions->definition(Responder::class) === null) {

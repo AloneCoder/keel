@@ -15,19 +15,40 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class ErrorPage
 {
+    /**
+     * True when Accept ranks HTML above JSON: by q-value first, then by position for equal q.
+     * Without an Accept header, or without any HTML type in it, the answer is JSON.
+     */
     public static function prefersHtml(ServerRequestInterface $request): bool
     {
-        $accept = strtolower($request->getHeaderLine('Accept'));
-        if ($accept === '') {
+        $html = null;
+        $json = null;
+        foreach (explode(',', strtolower($request->getHeaderLine('Accept'))) as $position => $range) {
+            $parts = array_map(trim(...), explode(';', $range));
+            $media = array_shift($parts);
+            $quality = 1.0;
+            foreach ($parts as $parameter) {
+                if (str_starts_with($parameter, 'q=') && is_numeric(substr($parameter, 2))) {
+                    $quality = (float) substr($parameter, 2);
+                }
+            }
+            if ($quality <= 0) {
+                continue;
+            }
+
+            $candidate = ['q' => $quality, 'at' => $position];
+            if ($media === 'text/html' || $media === 'application/xhtml+xml') {
+                $html = $html === null || $quality > $html['q'] ? $candidate : $html;
+            } elseif (str_contains($media, 'json')) {
+                $json = $json === null || $quality > $json['q'] ? $candidate : $json;
+            }
+        }
+
+        if ($html === null) {
             return false;
         }
 
-        $html = strpos($accept, 'text/html');
-        $xhtml = strpos($accept, 'application/xhtml+xml');
-        $json = strpos($accept, 'json');
-        $htmlAt = min($html === false ? \PHP_INT_MAX : $html, $xhtml === false ? \PHP_INT_MAX : $xhtml);
-
-        return $htmlAt !== \PHP_INT_MAX && ($json === false || $htmlAt < $json);
+        return $json === null || $html['q'] > $json['q'] || ($html['q'] === $json['q'] && $html['at'] < $json['at']);
     }
 
     public static function render(ProblemDetails $problem, \Throwable $exception, ServerRequestInterface $request, bool $debug): string

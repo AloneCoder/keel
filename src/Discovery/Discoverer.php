@@ -53,14 +53,14 @@ final class Discoverer
      */
     public function run(): bool
     {
-        $scan = null;
         if ($this->cacheFile !== null && is_file($this->cacheFile)) {
             $cached = self::readCache($this->cacheFile);
             if ($cached !== null) {
-                $fresh = !$this->checkFreshness;
-                if (!$fresh) {
-                    $scan = $this->scanner->scan($this->directories);
-                    $fresh = $scan['files'] === $cached['files'] && $scan['mtime'] === $cached['mtime'];
+                $fresh = true;
+                if ($this->checkFreshness) {
+                    // stat() only: no file is read unless something changed.
+                    $stat = $this->scanner->stat($this->directories);
+                    $fresh = $stat['files'] === $cached['files'] && $stat['mtime'] === $cached['mtime'];
                 }
 
                 if ($fresh && $this->restore($cached['results'])) {
@@ -69,12 +69,12 @@ final class Discoverer
             }
         }
 
-        $scan ??= $this->scanner->scan($this->directories);
+        $scan = $this->scanner->scan($this->directories);
         foreach ($scan['classes'] as $class) {
-            if (!class_exists($class) && !interface_exists($class) && !enum_exists($class)) {
+            $reflection = self::reflect($class);
+            if ($reflection === null) {
                 continue;
             }
-            $reflection = new \ReflectionClass($class);
             foreach ($this->discoveries as $discovery) {
                 $discovery->discover($reflection);
             }
@@ -85,6 +85,25 @@ final class Discoverer
         }
 
         return false;
+    }
+
+    /**
+     * Loading a class may fail when its parent or an interface comes from a package that is not
+     * installed; such a class cannot carry anything discoverable, so it is skipped.
+     *
+     * @return \ReflectionClass<object>|null
+     */
+    private static function reflect(string $class): ?\ReflectionClass
+    {
+        try {
+            if (!class_exists($class) && !interface_exists($class) && !enum_exists($class)) {
+                return null;
+            }
+
+            return new \ReflectionClass($class);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     public function clearCache(): void

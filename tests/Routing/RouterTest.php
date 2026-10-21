@@ -18,7 +18,9 @@ use Keel\Tests\Kernel\Fixtures\BrokenController;
 use Keel\Tests\Kernel\Fixtures\ClassMiddleware;
 use Keel\Tests\Kernel\Fixtures\MethodMiddleware;
 use Keel\Tests\Kernel\Fixtures\UserController;
+use Keel\Tests\Routing\Fixtures\RootController;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(Router::class)]
@@ -103,7 +105,57 @@ final class RouterTest extends TestCase
         $result = $router->match('PATCH', '/api/users/42');
 
         self::assertSame(MatchStatus::MethodNotAllowed, $result->status);
-        self::assertSame(['GET', 'PUT', 'DELETE'], $result->allowed);
+        self::assertSame(['GET', 'HEAD', 'PUT', 'DELETE'], $result->allowed, 'HEAD is served by GET, so Allow lists it');
+
+        $getOnly = Router::fromRoutes([
+            new Route('/x', ['GET'], [UserController::class, 'html']),
+            new Route('/y', ['HEAD', 'GET'], [UserController::class, 'html']),
+        ]);
+        self::assertSame(['GET', 'HEAD'], $getOnly->match('POST', '/x')->allowed);
+        self::assertSame(['GET', 'HEAD'], $getOnly->match('POST', '/y')->allowed, 'an explicit HEAD route is listed once');
+        self::assertSame(['POST'], Router::fromRoutes([new Route('/p', ['POST'], [UserController::class, 'html'])])->match('HEAD', '/p')->allowed);
+    }
+
+    public function testPrefixWithRootPathYieldsThePrefixItself(): void
+    {
+        $paths = array_map(static fn(Route $route): string => $route->path, new RouteCollector()->addController(RootController::class)->routes());
+
+        self::assertSame(['/api', '/api', '/api/items/'], $paths, '"/" and "" both mean the prefix; an explicit trailing slash elsewhere is kept');
+    }
+
+    public function testDuplicateDynamicRoutesAreRejected(): void
+    {
+        $this->expectException(RoutingException::class);
+        $this->expectExceptionMessage('Dynamic route GET /u/{slug} is declared twice');
+        Router::fromRoutes([
+            new Route('/u/{id}', ['GET'], [UserController::class, 'html']),
+            new Route('/u/{slug}', ['GET'], [UserController::class, 'raw']),
+        ]);
+    }
+
+    public function testSamePatternForDifferentMethodsIsFine(): void
+    {
+        $router = Router::fromRoutes([
+            new Route('/u/{id}', ['GET'], [UserController::class, 'html']),
+            new Route('/u/{id}', ['POST'], [UserController::class, 'raw']),
+        ]);
+
+        self::assertSame('raw', $router->match('POST', '/u/1')->match?->route->handler[1]);
+    }
+
+    public function testGeneratesAndValidatesUnicodeValues(): void
+    {
+        $router = Router::fromRoutes([
+            new Route('/s/{slug:[\p{L}-]+}', ['GET'], [UserController::class, 'html'], 'slug'),
+            new Route('/f/{file}', ['GET'], [UserController::class, 'html'], 'file'),
+        ]);
+
+        self::assertSame('/s/w%C3%B6rld-x', $router->generate('slug', ['slug' => 'wörld-x']), 'the decoded value satisfies \p{L}');
+        self::assertSame('/f/a%2Fb', $router->generate('file', ['file' => 'a/b']), 'the encoded form satisfies [^/]+, as it will when matched');
+
+        $this->expectException(RoutingException::class);
+        $this->expectExceptionMessage('"w0rld" is not a valid "slug"');
+        $router->generate('slug', ['slug' => 'w0rld']);
     }
 
     public function testHeadFallsBackToGet(): void
@@ -202,5 +254,41 @@ final class RouterTest extends TestCase
             new Route('/a', ['GET'], [UserController::class, 'html']),
             new Route('/a', ['GET', 'POST'], [UserController::class, 'raw']),
         ]);
+    }
+
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function invalidChunkSizes(): iterable
+    {
+        yield 'zero' => [0];
+        yield 'negative' => [-1];
+    }
+
+    #[DataProvider('invalidChunkSizes')]
+    public function testChunkSizeMustBeAtLeastOne(int $size): void
+    {
+        self::assertInstanceOf(RouteCompiler::class, new RouteCompiler(chunkSize: 1));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Route compiler chunk size must be at least 1, got ' . $size);
+        new RouteCompiler(chunkSize: $size);
+    }
+
+    public function testOverlappingDynamicPatternsMatchInDeclarationOrder(): void
+    {
+        $numeric = new Route('/items/{id:\\d+}', ['GET'], [UserController::class, 'html'], 'numeric');
+        $slug = new Route('/items/{slug}', ['GET'], [UserController::class, 'raw'], 'slug');
+
+        self::assertSame('numeric', Router::fromRoutes([$numeric, $slug])->match('GET', '/items/42')->match?->route->name);
+        self::assertSame('slug', Router::fromRoutes([$slug, $numeric])->match('GET', '/items/42')->match?->route->name, 'the first declared route wins');
+        self::assertSame('slug', Router::fromRoutes([$numeric, $slug])->match('GET', '/items/abc')->match?->route->name);
+
+        // The same precedence holds across chunk boundaries: one route per chunk here.
+        $matcher = new Matcher(new RouteCompiler(chunkSize: 1)->compile([$slug, $numeric]));
+        self::assertSame('slug', $matcher->match('GET', '/items/42')->match?->route->name);
+        $matcher = new Matcher(new RouteCompiler(chunkSize: 1)->compile([$numeric, $slug]));
+        self::assertSame('numeric', $matcher->match('GET', '/items/42')->match?->route->name);
     }
 }

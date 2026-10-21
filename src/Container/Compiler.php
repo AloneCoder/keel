@@ -21,9 +21,32 @@ use Keel\Container\Reflection\Planner;
  * Not compilable: closure factories, factories bound to an object, argument values and
  * parameters that are not scalars, arrays, null or enums. Register such things as instances
  * or switch to a static factory method.
+ *
+ * The ids that were autowired here (not registered) are listed in the AUTOWIRED constant, so a
+ * compiled container built with autowire: false ignores them like the runtime container does.
  */
 final class Compiler
 {
+    private const string HASH_LINE = "    public const string CONTENT_HASH = '%s';";
+
+    /**
+     * Words PHP refuses as a class name (keywords, magic constants and reserved type names),
+     * lower-cased: the identifier regex accepts them, the generated file would not parse.
+     * Namespace segments may be keywords since PHP 8.0, so only the class name is checked.
+     */
+    private const array RESERVED_CLASS_NAMES = [
+        'abstract', 'and', 'array', 'as', 'break', 'callable', 'case', 'catch', 'class', 'clone', 'const',
+        'continue', 'declare', 'default', 'die', 'do', 'echo', 'else', 'elseif', 'empty', 'enddeclare',
+        'endfor', 'endforeach', 'endif', 'endswitch', 'endwhile', 'eval', 'exit', 'extends', 'final',
+        'finally', 'fn', 'for', 'foreach', 'function', 'global', 'goto', 'if', 'implements', 'include',
+        'include_once', 'instanceof', 'insteadof', 'interface', 'isset', 'list', 'match', 'namespace',
+        'new', 'or', 'print', 'private', 'protected', 'public', 'readonly', 'require', 'require_once',
+        'return', 'static', 'switch', 'throw', 'trait', 'try', 'unset', 'use', 'var', 'while', 'xor',
+        'yield', '__halt_compiler', '__class__', '__dir__', '__file__', '__function__', '__line__',
+        '__method__', '__namespace__', '__trait__', '__property__', 'int', 'float', 'bool', 'string',
+        'true', 'false', 'null', 'void', 'iterable', 'object', 'mixed', 'never', 'self', 'parent',
+    ];
+
     private readonly Planner $planner;
 
     /** @var array<string, Definition> */
@@ -31,6 +54,9 @@ final class Compiler
 
     /** @var list<string> */
     private array $queue = [];
+
+    /** @var array<string, true> ids in $queue */
+    private array $queued = [];
 
     public function __construct(private readonly Definitions $definitions, ?Planner $planner = null)
     {
@@ -55,22 +81,42 @@ final class Compiler
         }
     }
 
+    /**
+     * @throws ContainerException when $className or $namespace is not a valid PHP identifier
+     */
     public function compile(string $className = 'KeelCompiledContainer', ?string $namespace = null): string
     {
+        self::assertIdentifier($className, 'class name');
+        if (in_array(strtolower($className), self::RESERVED_CLASS_NAMES, true)) {
+            throw new ContainerException(sprintf('Invalid class name for the compiled container: "%s" is reserved by PHP', $className));
+        }
+        if ($namespace !== null) {
+            foreach (explode('\\', $namespace) as $segment) {
+                self::assertIdentifier($segment, 'namespace');
+            }
+        }
+
         $this->compiled = [];
         $this->queue = array_keys($this->definitions->definitions());
+        $this->queued = array_fill_keys($this->queue, true);
 
         $methods = [];
         $cases = [];
+        $autowired = [];
         $index = 0;
         while (($id = array_shift($this->queue)) !== null) {
+            unset($this->queued[$id]);
             if (isset($this->compiled[$id])) {
                 continue;
             }
 
-            $definition = $this->definitions->definition($id) ?? $this->autowiredDefinition($id);
+            $definition = $this->definitions->definition($id);
             if ($definition === null) {
-                continue;
+                $definition = $this->autowiredDefinition($id);
+                if ($definition === null) {
+                    continue;
+                }
+                $autowired[$id] = true;
             }
 
             $this->compiled[$id] = $definition;
@@ -109,12 +155,14 @@ final class Compiler
         $lines[] = sprintf('final class %s extends \\%s', $className, AbstractCompiledContainer::class);
         $lines[] = '{';
         $lines[] = '    protected const array SERVICE_IDS = ' . self::export($serviceIds, 1) . ';';
+        $lines[] = '    protected const array AUTOWIRED = ' . self::export($autowired, 1) . ';';
         $lines[] = '    protected const array TRANSIENT = ' . self::export($transient, 1) . ';';
         $lines[] = '    protected const array ALIASES = ' . self::export($aliases, 1) . ';';
         $lines[] = '    protected const array TAGS = ' . self::export($this->definitions->tags(), 1) . ';';
         $lines[] = '    protected const array PARAMETERS = ' . self::export($this->definitions->parameters(), 1) . ';';
         $lines[] = '    protected const array INSTANCE_IDS = '
             . self::export(array_keys($this->definitions->instances()), 1) . ';';
+        $hashLine = count($lines);
         $lines[] = '';
         $lines[] = '    protected function create(string $id): mixed';
         $lines[] = '    {';
@@ -132,7 +180,19 @@ final class Compiler
         $lines[] = '}';
         $lines[] = '';
 
+        // The hash covers everything but its own line, so contentHash() recovers it from the file.
+        array_splice($lines, $hashLine, 0, [sprintf(self::HASH_LINE, md5(implode("\n", $lines)))]);
+
         return implode("\n", $lines);
+    }
+
+    /**
+     * Hash of a generated file, as stored in its CONTENT_HASH constant. App compares the two to
+     * notice that a cache was rewritten after its class was loaded in a long-lived process.
+     */
+    public static function contentHash(string $source): string
+    {
+        return md5(preg_replace('/^' . sprintf(preg_quote(self::HASH_LINE, '/'), '[0-9a-f]{32}') . '\n/m', '', $source, 1) ?? $source);
     }
 
     private function methodSource(string $method, Definition $definition): string
@@ -142,7 +202,8 @@ final class Compiler
             : $this->constructorBody($definition);
 
         return implode("\n", [
-            '    /** ' . $definition->id . ' */',
+            // The id is arbitrary text: keep it from closing the comment or breaking the line.
+            '    /** ' . str_replace(['*/', "\r", "\n"], ['*\/', ' ', ' '], $definition->id) . ' */',
             sprintf('    private function %s(): %s', $method, $returnType),
             '    {',
             '        ' . $body,
@@ -232,6 +293,9 @@ final class Compiler
             }
 
             $function = new \ReflectionMethod($class, $methodName);
+            if (!$function->isPublic()) {
+                throw new ContainerException(sprintf('Factory %s::%s of "%s" must be public', $class, $methodName, $definition->id));
+            }
             $call = $function->isStatic()
                 ? sprintf('\\%s::%s(%%s)', ltrim($class, '\\'), $methodName)
                 : sprintf('$this->get(%s)->%s(%%s)', self::string($class), $methodName);
@@ -309,12 +373,13 @@ final class Compiler
     private function reference(string $id): void
     {
         $id = $this->definitions->resolveAlias($id);
-        if (isset($this->compiled[$id]) || in_array($id, $this->queue, true)) {
+        if (isset($this->compiled[$id]) || isset($this->queued[$id])) {
             return;
         }
 
         if ($this->definitions->definition($id) !== null || $this->autowiredDefinition($id) !== null) {
             $this->queue[] = $id;
+            $this->queued[$id] = true;
         }
     }
 
@@ -342,6 +407,13 @@ final class Compiler
     private static function string(string $value): string
     {
         return var_export($value, true);
+    }
+
+    private static function assertIdentifier(string $value, string $what): void
+    {
+        if (preg_match('/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/', $value) !== 1) {
+            throw new ContainerException(sprintf('Invalid %s for the compiled container: "%s"', $what, $value));
+        }
     }
 
     /**

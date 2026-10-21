@@ -152,6 +152,10 @@ final class Instantiator
         }
 
         $reflection = new \ReflectionMethod($class, $method);
+        // Reflection could call a private method, the compiled container cannot: both refuse it.
+        if (!$reflection->isPublic()) {
+            throw new ContainerException(sprintf('Factory %s::%s of "%s" must be public', $class, $method, $definition->id));
+        }
         if ($reflection->isStatic()) {
             return [$reflection, static fn(array $args): mixed => $reflection->invokeArgs(null, $args)];
         }

@@ -24,6 +24,8 @@ final class EnvTest extends TestCase
             NAME="Keel \"quoted\""
             SINGLE='a # not a comment'
             TRAILING=value # comment
+            QUOTED_COMMENT="q # not a comment" # comment
+            SINGLE_COMMENT='s' # comment
             EMPTY=
             INVALID LINE
             ENV);
@@ -35,6 +37,8 @@ final class EnvTest extends TestCase
         self::assertSame('Keel "quoted"', $env->get('NAME'));
         self::assertSame('a # not a comment', $env->get('SINGLE'));
         self::assertSame('value', $env->get('TRAILING'));
+        self::assertSame('q # not a comment', $env->get('QUOTED_COMMENT'), 'a quoted value ends at its closing quote');
+        self::assertSame('s', $env->get('SINGLE_COMMENT'));
         self::assertSame('', $env->get('EMPTY'));
         self::assertSame('x', $env->get('EXTRA'));
         self::assertFalse($env->has('INVALID LINE'));
@@ -67,6 +71,28 @@ final class EnvTest extends TestCase
         self::assertSame('from-env', $env->get('KEEL_TEST_VALUE'));
         self::assertFalse($env->has('KEEL_TEST_ARRAY'));
         unset($_ENV['KEEL_TEST_VALUE'], $_SERVER['KEEL_TEST_ARRAY']);
+    }
+
+    public function testGlobalsSkipRequestVariablesUnlessTheEnvironmentHasThem(): void
+    {
+        $_SERVER['HTTP_X_KEEL'] = 'header';
+        $_SERVER['REQUEST_URI'] = '/x';
+        $_SERVER['REDIRECT_STATUS'] = '200';
+        $_SERVER['KEEL_PLAIN'] = 'plain';
+        $_ENV['HTTP_FROM_ENV'] = 'env';
+        $_SERVER['HTTP_FROM_ENV'] = 'server';
+
+        try {
+            $env = Env::fromGlobals();
+        } finally {
+            unset($_SERVER['HTTP_X_KEEL'], $_SERVER['REQUEST_URI'], $_SERVER['REDIRECT_STATUS'], $_SERVER['KEEL_PLAIN'], $_ENV['HTTP_FROM_ENV'], $_SERVER['HTTP_FROM_ENV']);
+        }
+
+        self::assertFalse($env->has('HTTP_X_KEEL'), 'request headers are not environment');
+        self::assertFalse($env->has('REQUEST_URI'));
+        self::assertFalse($env->has('REDIRECT_STATUS'));
+        self::assertSame('plain', $env->get('KEEL_PLAIN'), 'other $_SERVER keys are kept');
+        self::assertSame('server', $env->get('HTTP_FROM_ENV'), 'a request-looking key present in $_ENV is kept, $_SERVER still wins');
     }
 
     public function testAppConfigFromEnv(): void

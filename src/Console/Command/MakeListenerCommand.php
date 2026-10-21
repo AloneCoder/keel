@@ -23,9 +23,15 @@ final class MakeListenerCommand extends MakeCommandBase
     {
         $name = $input->getArgument('name');
         $name = self::studly(is_string($name) ? $name : 'Sample');
+        if ($name === '' || !self::isClassName($name)) {
+            return self::invalid($output, 'Listener name must be a class name, e.g. SendWelcomeMail');
+        }
         $class = str_ends_with($name, 'Listener') ? $name : $name . 'Listener';
         $event = $input->getArgument('event');
         $event = ltrim(is_string($event) ? $event : 'App\\Event\\Something', '\\');
+        if (!self::isClassReference($event)) {
+            return self::invalid($output, sprintf('"%s" is not a class name; expected e.g. App\\Event\\UserRegistered', $event));
+        }
         $short = substr($event, (int) strrpos('\\' . $event, '\\'));
         [$namespace] = $this->rootNamespace();
 

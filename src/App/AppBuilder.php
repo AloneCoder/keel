@@ -12,6 +12,7 @@ use Keel\Config\ServicesConfig;
 use Keel\Container\Compiler;
 use Keel\Container\Container;
 use Keel\Container\Definitions;
+use Keel\Container\Exception\ContainerException;
 use Keel\Discovery\CommandDiscovery;
 use Keel\Discovery\Discoverer;
 use Keel\Discovery\ListenerDiscovery;
@@ -57,6 +58,7 @@ final class AppBuilder
         } else {
             $cache = $cacheDir . '/container.php';
             if (!is_file($cache)) {
+                self::assertInstancesSurviveCachedBoot($definitions, $configs);
                 new Compiler($definitions)->write($cache, App::compiledClassName($config), App::COMPILED_NAMESPACE);
             }
             $container = App::compiledContainer($definitions->instances(), $cacheDir, $config);
@@ -85,6 +87,7 @@ final class AppBuilder
         $router = Router::fromControllers(...$discoverer->get(RouteDiscovery::class)->controllers());
         $router->write($cacheDir . '/routes.php');
         $definitions->instance(Router::class, $router);
+        self::assertInstancesSurviveCachedBoot($definitions, $app->configs);
         new Compiler($definitions)->write($cacheDir . '/container.php', App::compiledClassName($app->config), App::COMPILED_NAMESPACE);
 
         return [$cacheDir . '/discovery.php', $cacheDir . '/routes.php', $cacheDir . '/container.php'];
@@ -142,17 +145,57 @@ final class AppBuilder
 
         // Listeners are an argument of the provider, so a production boot registers nothing.
         $provider = $definitions->definition(ListenerProvider::class) ?? $definitions->set(ListenerProvider::class);
-        $provider->argument('listeners', $discoverer->get(ListenerDiscovery::class)->result())->alias(ListenerProviderInterface::class);
+        $provider->argument('listeners', $discoverer->get(ListenerDiscovery::class)->result());
+        if (self::unbound($definitions, ListenerProviderInterface::class)) {
+            $provider->alias(ListenerProviderInterface::class);
+        }
         if ($definitions->definition(EventDispatcher::class) === null) {
-            $definitions->set(EventDispatcher::class)->alias(EventDispatcherInterface::class);
+            $dispatcher = $definitions->set(EventDispatcher::class);
+            if (self::unbound($definitions, EventDispatcherInterface::class)) {
+                $dispatcher->alias(EventDispatcherInterface::class);
+            }
         }
         Kernel::registerDefaults($definitions);
-        if ($definitions->definition(StreamLogger::class) === null && !isset($definitions->aliases()[LoggerInterface::class]) && !isset($definitions->instances()[LoggerInterface::class])) {
+        if ($definitions->definition(StreamLogger::class) === null && self::unbound($definitions, LoggerInterface::class)) {
             $definitions->set(StreamLogger::class)->alias(LoggerInterface::class);
         }
         $configure?->__invoke($definitions, $env);
 
         return [$definitions, $discoverer];
+    }
+
+    /**
+     * True when the application bound nothing to $id: no definition, alias or instance. Only
+     * then does a framework default take the id; a definition registered under the id itself
+     * must not be shadowed by a default alias.
+     */
+    private static function unbound(Definitions $definitions, string $id): bool
+    {
+        return $definitions->definition($id) === null
+            && !isset($definitions->aliases()[$id])
+            && !isset($definitions->instances()[$id]);
+    }
+
+    /**
+     * A production boot with warm caches (App::fromCaches) re-supplies only Env, the config
+     * objects and Router to the compiled container; any other Definitions::instance() would make
+     * every boot after the first fail, so refuse to compile it.
+     *
+     * @param array<class-string, object> $configs
+     */
+    private static function assertInstancesSurviveCachedBoot(Definitions $definitions, array $configs): void
+    {
+        $known = [Env::class => true, Router::class => true] + array_fill_keys(array_keys($configs), true);
+        $extra = array_diff_key($definitions->instances(), $known);
+        if ($extra === []) {
+            return;
+        }
+
+        throw new ContainerException(sprintf(
+            'Instances registered for "%s" cannot be restored on a cached boot: a production boot re-supplies only Env, the config objects and Router. '
+            . 'Build the object in a static factory instead ($definitions->set($id, Foo::class)->factory(FooFactory::class . \'::create\')) or return it from a config/*.php file',
+            implode('", "', array_keys($extra)),
+        ));
     }
 
     private static function discoverer(DiscoveryConfig $config, string $cacheDir, bool $checkFreshness): Discoverer

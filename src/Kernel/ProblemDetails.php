@@ -5,12 +5,19 @@ declare(strict_types=1);
 namespace Keel\Kernel;
 
 use Keel\Http\Exception\HttpException;
+use Keel\Http\Responder;
 
 /**
  * RFC 9457 "Problem Details for HTTP APIs" payload built from an exception.
  */
 final readonly class ProblemDetails
 {
+    /**
+     * Responder::JSON_FLAGS plus substitution of invalid UTF-8: an exception message with stray
+     * bytes (a driver error, binary input echoed back) must not make the error response itself fail.
+     */
+    public const int JSON_FLAGS = Responder::JSON_FLAGS | \JSON_INVALID_UTF8_SUBSTITUTE;
+
     /**
      * @param array<string, string> $headers
      * @param array<string, mixed>  $body

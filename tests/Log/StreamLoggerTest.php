@@ -59,6 +59,17 @@ final class StreamLoggerTest extends TestCase
         self::assertMatchesRegularExpression('/^\[\d{4}-\d{2}-\d{2}T[^\]]+\] app\.WARNING: careful \{"n":1\}\n$/', (string) file_get_contents($this->file));
     }
 
+    public function testPlainTextKeepsOneRecordPerLine(): void
+    {
+        $logger = new StreamLogger(new LoggerConfig($this->file, json: false));
+
+        $logger->info("login failed for {user}", ['user' => "eve\n[2026-01-01T00:00:00+00:00] app.INFO: login ok for admin\r\n"]);
+
+        $lines = explode("\n", rtrim((string) file_get_contents($this->file), "\n"));
+        self::assertCount(1, $lines, 'line breaks in the message cannot forge a record');
+        self::assertStringContainsString('login failed for eve\n[2026-01-01T00:00:00+00:00] app.INFO: login ok for admin\n', $lines[0]);
+    }
+
     public function testUnknownLevelsAreRejected(): void
     {
         $this->expectException(InvalidArgumentException::class);

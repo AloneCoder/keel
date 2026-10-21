@@ -13,6 +13,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Loads the session from the cookie before the handler and persists it after. Cookie storage
  * keeps the data in the signed cookie itself; other storages keep a signed id in the cookie.
  * Handlers receive the session by type: public function profile(Session $session).
+ *
+ * The cookie is re-sent when the session changed, and also when the storage implements
+ * SessionExpiry and less than half of the ttl is left, so an active user is never logged out
+ * for lack of writes.
  */
 final class SessionMiddleware implements MiddlewareInterface
 {
@@ -34,45 +38,63 @@ final class SessionMiddleware implements MiddlewareInterface
     {
         $cookies = $request->getCookieParams();
         $cookie = $cookies[$this->config->cookie] ?? null;
-        $session = $this->load(is_string($cookie) ? $cookie : null);
+        [$session, $refresh] = $this->load(is_string($cookie) ? $cookie : null);
 
         $response = $handler->handle($request->withAttribute(Session::class, $session));
 
-        return $this->persist($session, $request, $response);
+        return $this->persist($session, $refresh, $request, $response);
     }
 
-    private function load(?string $cookie): Session
+    /**
+     * @return array{0: Session, 1: bool} the session and whether its expiry should be refreshed
+     */
+    private function load(?string $cookie): array
     {
         if ($cookie === null) {
-            return new Session(Session::generateId());
+            return [new Session(Session::generateId()), false];
         }
 
         if ($this->storage instanceof CookieStorage) {
-            $data = $this->storage->read($cookie);
+            $payload = $this->storage->decode($cookie);
 
-            return $data === null ? new Session(Session::generateId()) : new Session(Session::generateId(), $data, false);
+            return $payload === null
+                ? [new Session(Session::generateId()), false]
+                : [new Session(Session::generateId(), $payload['data'], false), $this->shouldRefresh($payload['exp'])];
         }
 
         $id = $this->signer->verify($cookie);
         if ($id === null) {
-            return new Session(Session::generateId());
+            return [new Session(Session::generateId()), false];
         }
         $data = $this->storage->read($id);
+        if ($data === null) {
+            return [new Session(Session::generateId()), false];
+        }
 
-        return $data === null ? new Session(Session::generateId()) : new Session($id, $data, false);
+        $expiresAt = $this->storage instanceof SessionExpiry ? $this->storage->expiresAt($id) : null;
+
+        return [new Session($id, $data, false), $expiresAt !== null && $this->shouldRefresh($expiresAt)];
     }
 
-    private function persist(Session $session, ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    private function shouldRefresh(int $expiresAt): bool
+    {
+        return $expiresAt - time() < intdiv($this->config->ttl, 2);
+    }
+
+    private function persist(Session $session, bool $refresh, ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
     {
         if ($session->isDestroyed() || ($session->isChanged() && $session->all() === [] && !$session->isNew())) {
             if (!$this->storage instanceof CookieStorage) {
                 $this->storage->destroy($session->id());
+                if ($session->previousId() !== null) {
+                    $this->storage->destroy($session->previousId());
+                }
             }
 
             return $response->withAddedHeader('Set-Cookie', $this->cookie('', $request, -1));
         }
 
-        if (!$session->isChanged()) {
+        if (!$session->isChanged() && !$refresh) {
             return $response;
         }
 
@@ -92,7 +114,7 @@ final class SessionMiddleware implements MiddlewareInterface
 
     private function cookie(string $value, ServerRequestInterface $request, int $maxAge): string
     {
-        $secure = $this->config->secure ?? $request->getUri()->getScheme() === 'https';
+        $secure = $this->config->sameSite === 'None' || ($this->config->secure ?? $request->getUri()->getScheme() === 'https');
         $parts = [
             $this->config->cookie . '=' . $value,
             'Path=' . $this->config->path,

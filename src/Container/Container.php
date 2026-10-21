@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Keel\Container;
 
 use Keel\Container\Exception\CircularDependencyException;
+use Keel\Container\Exception\ContainerException;
 use Keel\Container\Exception\NotFoundException;
 use Keel\Container\Reflection\ClassAttributes;
 use Keel\Container\Reflection\Instantiator;
@@ -14,7 +15,8 @@ use Psr\Container\ContainerInterface as PsrContainerInterface;
  * Reflection-based container for development and tests. Production uses the compiled
  * container produced by Compiler, which behaves identically.
  *
- * Definitions are treated as frozen once the container is created.
+ * Definitions are treated as frozen once the container is created. Lookup order, shared with
+ * the compiled container: pre-built instances, definitions (registered or autowired), parameters.
  */
 final class Container implements ContainerInterface
 {
@@ -27,11 +29,14 @@ final class Container implements ContainerInterface
     /** @var array<string, Definition> */
     private array $autowired = [];
 
-    /** @var array<string, string>|null */
-    private ?array $aliases = null;
+    /** @var array<string, string> alias => final id */
+    private readonly array $aliases;
 
     private readonly Instantiator $instantiator;
 
+    /**
+     * @throws ContainerException on an alias loop or an alias colliding with a definition id
+     */
     public function __construct(
         private readonly Definitions $definitions,
         private readonly bool $autowire = true,
@@ -42,22 +47,30 @@ final class Container implements ContainerInterface
         // The container can inject itself under both the PSR and the Keel interface.
         $this->instances[PsrContainerInterface::class] = $this;
         $this->instances[ContainerInterface::class] = $this;
+
+        $aliases = [];
+        foreach ($definitions->aliases() as $alias => $target) {
+            $aliases[$alias] = $definitions->resolveAlias($target);
+        }
+        $this->aliases = $aliases;
     }
 
     public function get(string $id): mixed
     {
-        $id = $this->resolveAlias($id);
+        $id = $this->aliases[$id] ?? $id;
 
         if (array_key_exists($id, $this->instances)) {
             return $this->instances[$id];
         }
 
-        if ($this->definitions->hasParameter($id)) {
-            return $this->definitions->parameters()[$id];
-        }
+        $definition = $this->definitions->definition($id) ?? $this->autowired[$id] ?? null;
+        if ($definition === null) {
+            if ($this->definitions->hasParameter($id)) {
+                return $this->definitions->parameters()[$id];
+            }
 
-        $definition = $this->definitionFor($id)
-            ?? throw NotFoundException::forId($id, array_keys($this->resolving));
+            $definition = $this->autowiredDefinition($id) ?? throw $this->notFound($id);
+        }
 
         if (isset($this->resolving[$id])) {
             throw CircularDependencyException::forChain([...array_keys($this->resolving), $id]);
@@ -79,11 +92,13 @@ final class Container implements ContainerInterface
 
     public function has(string $id): bool
     {
-        $id = $this->resolveAlias($id);
+        $id = $this->aliases[$id] ?? $id;
 
         return array_key_exists($id, $this->instances)
+            || $this->definitions->definition($id) !== null
+            || isset($this->autowired[$id])
             || $this->definitions->hasParameter($id)
-            || $this->definitionFor($id) !== null;
+            || $this->autowiredDefinition($id) !== null;
     }
 
     public function tagged(string $tag): array
@@ -101,35 +116,27 @@ final class Container implements ContainerInterface
 
     public function reset(): void
     {
-        foreach ($this->instances as $instance) {
-            if ($instance instanceof Resettable && !Instantiator::isUninitializedLazy($instance)) {
-                $instance->reset();
-            }
-        }
+        Resetter::reset($this->instances);
     }
 
-    private function resolveAlias(string $id): string
+    /**
+     * PSR-11 reserves NotFoundExceptionInterface for the id that was asked for; a dependency
+     * missing deeper in the chain is a plain ContainerException carrying the chain.
+     */
+    private function notFound(string $id): ContainerException
     {
-        $this->aliases ??= $this->definitions->aliases();
-        $seen = [];
-        while (isset($this->aliases[$id])) {
-            if (isset($seen[$id])) {
-                return $id;
-            }
-            $seen[$id] = true;
-            $id = $this->aliases[$id];
+        if ($this->resolving === []) {
+            return NotFoundException::forId($id);
         }
 
-        return $id;
+        return ContainerException::withChain(
+            sprintf('Service "%s" is not registered and cannot be autowired', $id),
+            array_keys($this->resolving),
+        );
     }
 
-    private function definitionFor(string $id): ?Definition
+    private function autowiredDefinition(string $id): ?Definition
     {
-        $definition = $this->definitions->definition($id) ?? $this->autowired[$id] ?? null;
-        if ($definition !== null) {
-            return $definition;
-        }
-
         if (!$this->autowire || !class_exists($id)) {
             return null;
         }

@@ -13,6 +13,10 @@ use Keel\Validation\Rule;
  * Supports scalars, nullable types, defaults, arrays, backed and unit enums and nested DTOs,
  * then runs the Keel\Validation rule attributes of each parameter. Every problem is collected
  * and reported at once as a 400 with per-field errors.
+ *
+ * A DTO constructor may reject a combination of values by throwing \InvalidArgumentException or
+ * \DomainException: the message becomes one more error of the 400. Any other exception is a bug
+ * in the DTO and propagates as a 500.
  */
 final class Hydrator
 {
@@ -96,7 +100,13 @@ final class Hydrator
             return $reflection->newInstanceWithoutConstructor();
         }
 
-        return $reflection->newInstanceArgs($arguments);
+        try {
+            return $reflection->newInstanceArgs($arguments);
+        } catch (\InvalidArgumentException|\DomainException $rejected) {
+            $errors[] = ($path === '' ? '' : $path . ': ') . $rejected->getMessage();
+
+            return $reflection->newInstanceWithoutConstructor();
+        }
     }
 
     /**
@@ -137,7 +147,7 @@ final class Hydrator
         }
 
         if ($type instanceof \ReflectionUnionType) {
-            foreach ($type->getTypes() as $member) {
+            foreach (self::byPreference($type->getTypes()) as $member) {
                 $attempt = [];
                 $result = $this->castValue($value, $member, $path, $attempt);
                 if ($attempt === []) {
@@ -169,6 +179,29 @@ final class Hydrator
     }
 
     /**
+     * Union members are tried in a fixed order, int, float, bool, string, then everything else,
+     * regardless of how PHP orders them in reflection (it reports int|string as string|int): the
+     * most specific scalar wins, so "42" becomes 42 for int|string and "x" stays a string.
+     *
+     * @param array<\ReflectionNamedType|\ReflectionIntersectionType> $types
+     *
+     * @return list<\ReflectionNamedType|\ReflectionIntersectionType>
+     */
+    private static function byPreference(array $types): array
+    {
+        $rank = static fn(\ReflectionType $type): int => match ($type instanceof \ReflectionNamedType ? $type->getName() : '') {
+            'int' => 0,
+            'float' => 1,
+            'bool' => 2,
+            'string' => 3,
+            default => 4,
+        };
+        usort($types, static fn(\ReflectionType $a, \ReflectionType $b): int => $rank($a) <=> $rank($b));
+
+        return $types;
+    }
+
+    /**
      * @param list<string> $errors
      */
     private function toInt(mixed $value, string $path, array &$errors): ?int
@@ -176,11 +209,16 @@ final class Hydrator
         if (is_int($value)) {
             return $value;
         }
-        if (is_float($value) && floor($value) === $value && is_finite($value)) {
+        // (float) PHP_INT_MAX rounds up to 2^63, which is already out of range, hence the strict bound.
+        if (is_float($value) && is_finite($value) && floor($value) === $value && $value >= (float) \PHP_INT_MIN && $value < -(float) \PHP_INT_MIN) {
             return (int) $value;
         }
-        if (is_string($value) && preg_match('/^-?\d+$/', $value) === 1) {
-            return (int) $value;
+        if (is_string($value) && preg_match('/^-?\d+$/D', $value) === 1) {
+            $digits = ltrim(ltrim($value, '-'), '0');
+            $limit = $value[0] === '-' ? ltrim((string) \PHP_INT_MIN, '-') : (string) \PHP_INT_MAX;
+            if (strlen($digits) < strlen($limit) || (strlen($digits) === strlen($limit) && strcmp($digits, $limit) <= 0)) {
+                return (int) $value;
+            }
         }
 
         $errors[] = sprintf('%s: must be an integer', $path);

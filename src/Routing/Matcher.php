@@ -33,10 +33,13 @@ final class Matcher
         foreach (array_keys($this->routes->static + $this->routes->dynamic) as $candidate) {
             if ($candidate !== $method && $this->matchMethod($candidate, $path) !== null) {
                 $allowed[] = $candidate;
+                if ($candidate === 'GET') {
+                    $allowed[] = 'HEAD'; // served by the GET route, so Allow must list it too
+                }
             }
         }
 
-        return $allowed === [] ? MatchResult::notFound() : MatchResult::methodNotAllowed($allowed);
+        return $allowed === [] ? MatchResult::notFound() : MatchResult::methodNotAllowed(array_values(array_unique($allowed)));
     }
 
     private function matchMethod(string $method, string $path): ?MatchResult

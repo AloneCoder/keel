@@ -39,6 +39,26 @@ final class ExceptionHandlerMiddleware implements MiddlewareInterface
 
     public function render(\Throwable $exception, ServerRequestInterface $request): ResponseInterface
     {
+        try {
+            return $this->problem($exception, $request);
+        } catch (\Throwable $failure) {
+            // Rendering itself failed (an invalid header value on an HttpException, a stream that cannot
+            // be created, ...): the worker must still answer, with the plainest 500 possible.
+            $this->logger()?->critical('Error response could not be rendered: ' . $failure->getMessage(), [
+                'exception' => $failure,
+                'original' => $exception,
+            ]);
+
+            return $this->responder->text(
+                '{"type":"about:blank","title":"Internal Server Error","status":500}',
+                500,
+                'application/problem+json',
+            );
+        }
+    }
+
+    private function problem(\Throwable $exception, ServerRequestInterface $request): ResponseInterface
+    {
         $problem = ProblemDetails::fromThrowable($exception, $this->debug);
 
         if ($problem->status >= 500) {
@@ -51,7 +71,7 @@ final class ExceptionHandlerMiddleware implements MiddlewareInterface
 
         $response = ErrorPage::prefersHtml($request)
             ? $this->responder->text(ErrorPage::render($problem, $exception, $request, $this->debug), $problem->status, 'text/html; charset=utf-8')
-            : $this->responder->json($problem->body, $problem->status, 'application/problem+json');
+            : $this->responder->text(json_encode($problem->body, ProblemDetails::JSON_FLAGS), $problem->status, 'application/problem+json');
         foreach ($problem->headers as $name => $value) {
             $response = $response->withHeader($name, $value);
         }

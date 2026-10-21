@@ -29,11 +29,17 @@ final class MakeAuthenticatorCommand extends MakeCommandBase
     {
         $name = $input->getArgument('name');
         $name = self::studly(is_string($name) ? $name : 'Sample');
+        if ($name === '' || !self::isClassName($name)) {
+            return self::invalid($output, 'Name must be a class name, e.g. ApiTokens or Session');
+        }
         [$namespace] = $this->rootNamespace();
 
         if ($input->getOption('scheme') === true) {
             $class = str_ends_with($name, 'Authenticator') ? $name : $name . 'Authenticator';
             $scheme = strtolower(substr($class, 0, -13));
+            if ($scheme === '') {
+                return self::invalid($output, 'Name the scheme, e.g. Signature: "Authenticator" alone leaves it empty');
+            }
 
             return $this->write($input, $output, 'Auth', $class, self::authenticator($namespace, $class, $scheme));
         }

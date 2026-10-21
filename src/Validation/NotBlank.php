@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Keel\Validation;
 
-#[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
+#[\Attribute(\Attribute::TARGET_PARAMETER)]
 final readonly class NotBlank implements Rule
 {
     public function __construct(public string $message = 'must not be blank') {}

@@ -35,8 +35,25 @@ $container = new Container($d);
 ```
 
 A class that is not registered anywhere is still created on demand when it is instantiable
-and every constructor parameter can be resolved (autowiring can be switched off with the
-second `Container` argument).
+and every constructor parameter can be resolved. Autowiring can be switched off with the
+second constructor argument of either container (`autowire: false`), with the same meaning in
+both: only registered definitions resolve, a required dependency on an unregistered class fails
+with the resolution chain and an optional one gets its default. The compiled class remembers
+which classes it autowired at compile time (`AUTOWIRED`) and sets them aside when the flag is off.
+
+Lookup order of `get()`/`has()`, the same in both containers: pre-built instances, then
+definitions (registered or autowired), then parameters.
+
+An id is either an alias or a definition, never both: `alias('x', ...)` after `set('x')`,
+`set('x')` after `alias('x', ...)` and a `#[Alias('x')]`/`->alias('x')` colliding with a
+definition `x` all throw `ContainerException` instead of silently shadowing one of them.
+Register the implementation under its own id and alias the interface to it. The one
+exception is `set(Iface::class, Impl::class)` when `Impl` carries `#[Alias(Iface::class)]`:
+an alias to its own id is ignored. Alias loops are rejected when the container is built.
+
+Factory methods must be public: a private or protected `Class::method` is refused by both
+containers with `Factory Class::method of "id" must be public` (reflection could call it, the
+generated code could not).
 
 ## Resolving constructor and factory arguments
 
@@ -46,7 +63,8 @@ For each parameter, in this order:
 2. `#[Inject('id')]`: the service or parameter with that id;
 3. `#[TaggedIterator('tag')]`: a list of every service carrying the tag;
 4. a parameter typed with a class or interface: the service with that name; when the parameter
-   has a default value the service is injected only if the container knows it (`has()`);
+   has a default value or is nullable (`?Foo $foo`) the service is injected only if the container
+   knows it (`has()`), otherwise the default (`null` for the nullable case) is passed;
 5. the default value;
 6. `null` for a nullable type;
 7. otherwise `ContainerException` naming the parameter and the class.
@@ -71,7 +89,9 @@ does. A lazy service breaks dependency cycles: `A(B)`, `#[Lazy] B(A)` works.
 
 A service that accumulates request state implements `Keel\Container\Resettable`. In worker mode
 the kernel calls `$container->reset()` after every request: only instantiated shared services
-are visited, uninitialized lazy objects are skipped.
+are visited, uninitialized lazy objects are skipped. A `reset()` that throws does not stop the
+others: every service is visited, then one `ContainerException` listing the failures (the first
+one as `getPrevious()`) is thrown.
 
 ## Compilation
 
@@ -83,7 +103,12 @@ $container = new \App\Generated\KeelCompiledContainer([HttpConfig::class => $con
 
 Every definition and every class reachable from it through constructor types is compiled.
 Objects from `Definitions::instance()` never end up in generated code: their ids are listed
-in `INSTANCE_IDS` and the compiled class requires them in its constructor.
+in `INSTANCE_IDS` and the compiled class requires them in its constructor. The class name and
+namespace must be valid PHP identifiers; service ids are arbitrary strings and are escaped.
+
+The generated class carries `CONTENT_HASH`, `Compiler::contentHash()` of its own file. PHP
+cannot reload a class, so `App` compares the two when the class is already loaded and refuses
+a cache rewritten in the same process.
 
 Not compilable, reported as `ContainerException` at compile time:
 
@@ -96,6 +121,9 @@ The file is written atomically (temporary file + `rename`).
 
 ## Errors
 
-- `NotFoundException` (PSR `NotFoundExceptionInterface`): the id is unknown and cannot be autowired;
+- `NotFoundException` (PSR `NotFoundExceptionInterface`): the requested id is unknown and cannot be
+  autowired. Only the id passed to `get()` can be "not found": a dependency missing deeper in the
+  chain is a `ContainerException` whose message carries the resolution chain, since `has()` is
+  true for the requested id;
 - `CircularDependencyException`: a cycle without a lazy link; the message lists the whole chain;
 - `ContainerException`: everything else; the message includes the resolution chain when there is one.

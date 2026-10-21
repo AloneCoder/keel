@@ -144,6 +144,55 @@ final class CompiledContainerTest extends ContainerBehaviourTestCase
         new Compiler($definitions)->compile();
     }
 
+    public function testServiceIdCannotBreakOutOfTheGeneratedDocComment(): void
+    {
+        $id = 'x */ echo "INJECTED"; /*';
+        $definitions = new Definitions();
+        $definitions->set($id, Logger::class);
+
+        $source = new Compiler($definitions)->compile();
+        self::assertStringContainsString('/** x *\/ echo "INJECTED"; /* */', $source);
+
+        $fqcn = self::load($definitions, 'KeelCompiledContainerEscaped'); // a syntax error would surface here
+        self::assertInstanceOf(Logger::class, new $fqcn()->get($id));
+    }
+
+    public function testInvalidClassNameAndNamespaceAreRejected(): void
+    {
+        $compiler = new Compiler(new Definitions());
+
+        try {
+            $compiler->compile('1bad');
+            self::fail('expected a ContainerException');
+        } catch (ContainerException $exception) {
+            self::assertSame('Invalid class name for the compiled container: "1bad"', $exception->getMessage());
+        }
+
+        $this->expectException(ContainerException::class);
+        $this->expectExceptionMessage('Invalid namespace for the compiled container: "B-C"');
+        $compiler->compile('Ok', 'A\\B-C');
+    }
+
+    public function testContentHashIdentifiesTheGeneratedSource(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set(Logger::class);
+        $source = new Compiler($definitions)->compile('Hashed', 'Keel\Tests\Generated');
+
+        if (preg_match("/public const string CONTENT_HASH = '([0-9a-f]{32})';/", $source, $match) !== 1) {
+            self::fail('generated source has no CONTENT_HASH constant');
+        }
+        self::assertSame($match[1], Compiler::contentHash($source), 'the constant is the hash of the file without its own line');
+
+        $definitions->set(Mailer::class);
+        $changed = new Compiler($definitions)->compile('Hashed', 'Keel\Tests\Generated');
+        self::assertNotSame(Compiler::contentHash($source), Compiler::contentHash($changed));
+
+        $fqcn = self::load($definitions, 'KeelCompiledContainerHashed');
+        $file = (string) file_get_contents(self::directory() . '/KeelCompiledContainerHashed.php');
+        self::assertSame(Compiler::contentHash($file), $fqcn::CONTENT_HASH);
+    }
+
     public function testGeneratedSourcePassesLint(): void
     {
         $definitions = new Definitions();
@@ -167,5 +216,26 @@ final class CompiledContainerTest extends ContainerBehaviourTestCase
         }
 
         return $directory;
+    }
+
+
+    public function testReservedWordsAreRejectedAsTheClassNameButAllowedAsNamespaceSegments(): void
+    {
+        $compiler = new Compiler(new Definitions());
+
+        foreach (['match', 'Class', 'READONLY', 'list', 'fn', 'int', 'null', 'self', '__CLASS__'] as $name) {
+            try {
+                $compiler->compile($name);
+                self::fail('accepted "' . $name . '"');
+            } catch (ContainerException $e) {
+                self::assertSame(sprintf('Invalid class name for the compiled container: "%s" is reserved by PHP', $name), $e->getMessage());
+            }
+        }
+
+        // Since PHP 8.0 keywords are fine inside a namespace; the generated file must still parse.
+        $path = self::directory() . '/ReservedNamespace.php';
+        $compiler->write($path, 'Enum', 'Keel\\Tests\\Generated\\Match\\List');
+        exec(sprintf('%s -l %s 2>&1', escapeshellarg(\PHP_BINARY), escapeshellarg($path)), $output, $code);
+        self::assertSame(0, $code, implode("\n", $output));
     }
 }

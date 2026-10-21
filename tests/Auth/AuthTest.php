@@ -18,7 +18,9 @@ use Keel\Auth\Principal;
 use Keel\Auth\PrincipalResolver;
 use Keel\Auth\SecurityScheme;
 use Keel\Container\Definitions;
+use Keel\Http\Exception\UnauthorizedException;
 use Keel\Kernel\Kernel;
+use Keel\RateLimit\InMemoryCounters;
 use Keel\Testing\TestClient;
 use Keel\Tests\Auth\Fixtures\AccountController;
 use Keel\Tests\Auth\Fixtures\Tokens;
@@ -178,7 +180,7 @@ final class AuthTest extends TestCase
             ->assertHeader('WWW-Authenticate', 'HMAC');
 
         $unknown = HmacAuthenticator::sign('other', 'top-secret', 'POST', '/ingest', $body, $now);
-        $this->client()->request('POST', '/ingest', ['Authorization' => $unknown], $body)->assertProblem(401, 'Unknown key id');
+        $this->client()->request('POST', '/ingest', ['Authorization' => $unknown], $body)->assertProblem(401, 'Invalid signature');
 
         $stale = HmacAuthenticator::sign('svc', 'top-secret', 'POST', '/ingest', $body, $now - 3600);
         $this->client()->request('POST', '/ingest', ['Authorization' => $stale], $body)->assertProblem(401, 'Signature timestamp out of range');
@@ -203,6 +205,88 @@ final class AuthTest extends TestCase
         $other = new ServerRequest('GET', 'http://localhost/ingest?a=2', ['Authorization' => $signed]);
         $this->expectExceptionMessage('Invalid signature');
         $authenticator->authenticate($other);
+    }
+
+    public function testUnknownKeyIdIsIndistinguishableFromAWrongSignature(): void
+    {
+        $authenticator = new HmacAuthenticator(new Tokens());
+        $messages = [];
+        foreach (['other' => 'top-secret', 'svc' => 'wrong'] as $keyId => $secret) {
+            try {
+                $authenticator->authenticate(new ServerRequest('GET', 'http://localhost/x', ['Authorization' => HmacAuthenticator::sign($keyId, $secret, 'GET', '/x', '', time())]));
+                self::fail('rejected');
+            } catch (UnauthorizedException $e) {
+                $messages[] = $e->getMessage();
+            }
+        }
+        self::assertSame(['Invalid signature', 'Invalid signature'], $messages);
+    }
+
+    public function testHmacReplayIsRejectedWhenACounterStorageIsGiven(): void
+    {
+        $header = HmacAuthenticator::sign('svc', 'top-secret', 'POST', '/ingest', '{"n":1}', time());
+        $request = new ServerRequest('POST', 'http://localhost/ingest', ['Authorization' => $header], '{"n":1}');
+
+        $withoutProtection = new HmacAuthenticator(new Tokens());
+        self::assertNotNull($withoutProtection->authenticate($request));
+        self::assertNotNull($withoutProtection->authenticate($request), 'no storage: replays inside the tolerance are accepted');
+
+        $protected = new HmacAuthenticator(new Tokens(), 300, null, new InMemoryCounters());
+        self::assertSame('svc', $protected->authenticate($request)?->id());
+        try {
+            $protected->authenticate($request);
+            self::fail('replay accepted');
+        } catch (UnauthorizedException $e) {
+            self::assertSame('Replayed signature', $e->getMessage());
+            self::assertSame(['WWW-Authenticate' => 'HMAC'], $e->headers);
+        }
+
+        $fresh = HmacAuthenticator::sign('svc', 'top-secret', 'POST', '/ingest', '{"n":1}', time() + 1);
+        self::assertNotNull($protected->authenticate($request->withHeader('Authorization', $fresh)), 'a new timestamp is a new signature');
+    }
+
+    public function testSignRejectsKeyIdsThatCannotTravelInTheHeader(): void
+    {
+        foreach (['', 'a:b', 'a b', str_repeat('k', 129)] as $keyId) {
+            try {
+                HmacAuthenticator::sign($keyId, 's', 'GET', '/', '', 0);
+                self::fail(sprintf('key id "%s" accepted', $keyId));
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringContainsString('key id', $e->getMessage());
+            }
+        }
+        self::assertStringStartsWith('HMAC ' . str_repeat('k', 128) . ':0:', HmacAuthenticator::sign(str_repeat('k', 128), 's', 'GET', '/', '', 0));
+    }
+
+    public function testMalformedBearerHeaderIs401NotAnonymous(): void
+    {
+        $client = $this->client();
+        $client->get('/feed', ['Authorization' => 'Bearer '])
+            ->assertProblem(401, 'Malformed bearer token')
+            ->assertHeader('WWW-Authenticate', 'Bearer realm="api", error="invalid_request"');
+        $client->get('/feed', ['Authorization' => 'Bearer one two'])->assertProblem(401, 'Malformed bearer token');
+        $client->get('/feed', ['Authorization' => 'Bearer'])->assertProblem(401, 'Malformed bearer token');
+        // "BearerX" is another scheme, not a malformed Bearer header: anonymous.
+        $client->get('/feed', ['Authorization' => 'BearerX token'])->assertOk()->assertJson(['for' => 'anonymous']);
+    }
+
+    public function testAFailingAuthenticatorLookupIsNotCachedAsAPartialList(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set(Tokens::class)->alias(PrincipalResolver::class);
+        // The second id resolves to something that is not an Authenticator.
+        $definitions->instance(HmacAuthenticator::class, new \stdClass());
+        $definitions->instance(AuthConfig::class, new AuthConfig([BearerTokenAuthenticator::class, HmacAuthenticator::class]));
+        $authentication = Kernel::build($definitions, [AccountController::class])->container->get(Authentication::class);
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                $authentication->authenticators();
+                self::fail('stdClass accepted as an authenticator');
+            } catch (\LogicException $e) {
+                self::assertStringContainsString(HmacAuthenticator::class, $e->getMessage());
+            }
+        }
     }
 
     public function testSecuritySchemesDescribeEachAuthenticator(): void
@@ -230,5 +314,25 @@ final class AuthTest extends TestCase
         self::assertSame([], $kernel->container->get(Authentication::class)->authenticators());
         self::assertCount(3, Kernel::build(self::definitions(), [AccountController::class])->container->get(Authentication::class)->authenticators());
         TestClient::forKernel($kernel)->get('/me')->assertProblem(401)->assertHeaderMissing('WWW-Authenticate');
+    }
+
+
+    public function testHmacIsNotBoundToTheHostAndReplaysAreOnlyRejectedWithACounterStorage(): void
+    {
+        $authenticator = new HmacAuthenticator(new Tokens());
+        $header = HmacAuthenticator::sign('svc', 'top-secret', 'GET', '/x', '', time());
+
+        // Documented: Host is not signed, so a secret must never be shared between environments.
+        foreach (['http://localhost/x', 'https://other.example/x'] as $uri) {
+            self::assertSame('svc', $authenticator->authenticate(new ServerRequest('GET', $uri, ['Authorization' => $header]))?->id(), $uri);
+        }
+        // Documented: without a CounterStorage the tolerance window is the only bound on replays.
+        self::assertSame('svc', $authenticator->authenticate(new ServerRequest('GET', 'http://localhost/x', ['Authorization' => $header]))?->id());
+
+        $strict = new HmacAuthenticator(new Tokens(), 300, null, new InMemoryCounters());
+        self::assertSame('svc', $strict->authenticate(new ServerRequest('GET', 'http://localhost/x', ['Authorization' => $header]))?->id());
+        $this->expectException(UnauthorizedException::class);
+        $this->expectExceptionMessage('Replayed signature');
+        $strict->authenticate(new ServerRequest('GET', 'https://other.example/x', ['Authorization' => $header]));
     }
 }

@@ -70,6 +70,33 @@ final class MakeCommandsTest extends TestCase
         }
     }
 
+    public function testRejectsNamesThatAreNotClassNamesAndQuotesInterpolatedStrings(): void
+    {
+        self::assertSame(1, $this->tester->run(['command' => 'keel:make:controller', 'name' => '123']));
+        self::assertStringContainsString('class name', $this->tester->getDisplay());
+        self::assertSame(1, $this->tester->run(['command' => 'keel:make:middleware', 'name' => '---']));
+        self::assertSame(1, $this->tester->run(['command' => 'keel:make:listener', 'name' => 'Audit', 'event' => "App\\Event\\X'); system('id"]));
+        self::assertStringContainsString('not a class name', $this->tester->getDisplay());
+        self::assertSame(1, $this->tester->run(['command' => 'keel:make:command', 'name' => 'app:']));
+        self::assertSame(1, $this->tester->run(['command' => 'keel:make:check', 'name' => 'Check']));
+        self::assertStringContainsString('label empty', $this->tester->getDisplay());
+        self::assertSame(1, $this->tester->run(['command' => 'keel:make:authenticator', 'name' => 'Authenticator', '--scheme' => true]));
+        self::assertStringContainsString('empty', $this->tester->getDisplay());
+        self::assertSame([], glob($this->project . '/src/*/*.php') ?: [], 'nothing was written');
+
+        self::assertSame(0, $this->tester->run(['command' => 'keel:make:command', 'name' => "app:it's-x"]));
+        $command = (string) file_get_contents($this->project . '/src/Command/ItSXCommand.php');
+        self::assertStringContainsString("#[AsCommand(name: 'app:it\\'s-x'", $command);
+        self::assertSame(0, $this->tester->run(['command' => 'keel:make:controller', 'name' => 'Odd', '--prefix' => "o'dd"]));
+        $controller = (string) file_get_contents($this->project . '/src/Controller/OddController.php');
+        self::assertStringContainsString("#[Prefix('/o\\'dd')]", $controller);
+
+        foreach (glob($this->project . '/src/*/*.php') ?: [] as $file) {
+            exec(sprintf('%s -l %s 2>&1', escapeshellarg(\PHP_BINARY), escapeshellarg($file)), $out, $code);
+            self::assertSame(0, $code, implode("\n", $out));
+        }
+    }
+
     public function testRefusesToOverwriteWithoutForce(): void
     {
         $this->tester->run(['command' => 'keel:make:middleware', 'name' => 'Audit']);

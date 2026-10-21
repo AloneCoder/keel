@@ -293,6 +293,10 @@ final class SchemaBuilder
         if (isset($schema['type']) && is_string($schema['type'])) {
             $schema['type'] = [$schema['type'], 'null'];
         }
+        // "enum" is exhaustive in JSON Schema: null must be listed to validate.
+        if (isset($schema['enum']) && is_array($schema['enum']) && !in_array(null, $schema['enum'], true)) {
+            $schema['enum'][] = null;
+        }
 
         return $schema;
     }

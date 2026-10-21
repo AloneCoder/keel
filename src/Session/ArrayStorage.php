@@ -7,7 +7,7 @@ namespace Keel\Session;
 /**
  * In-memory storage for tests. Never use it in a worker: it would share sessions across requests of one process only.
  */
-final class ArrayStorage implements SessionStorageInterface
+final class ArrayStorage implements SessionStorageInterface, SessionExpiry
 {
     /** @var array<string, array{0: int, 1: array<string, mixed>}> */
     public array $sessions = [];
@@ -17,6 +17,13 @@ final class ArrayStorage implements SessionStorageInterface
         $entry = $this->sessions[$id] ?? null;
 
         return $entry !== null && $entry[0] >= time() ? $entry[1] : null;
+    }
+
+    public function expiresAt(string $id): ?int
+    {
+        $entry = $this->sessions[$id] ?? null;
+
+        return $entry !== null && $entry[0] >= time() ? $entry[0] : null;
     }
 
     public function write(string $id, array $data, int $ttl): void

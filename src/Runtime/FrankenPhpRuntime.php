@@ -40,7 +40,8 @@ final class FrankenPhpRuntime implements RuntimeInterface
             try {
                 $emitter->emit($kernel->handle($creator->fromGlobals()));
             } catch (\Throwable $exception) {
-                // Kernel::handle() never throws; this covers request creation and emitting.
+                // Kernel::handle() answers every exception itself; this covers request creation, emitting
+                // and whatever slips past the exception handler's own fallback.
                 $this->logger?->critical($exception->getMessage(), ['exception' => $exception]);
                 if (!headers_sent()) {
                     http_response_code(500);

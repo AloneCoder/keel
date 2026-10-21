@@ -22,8 +22,14 @@ final class MakeCheckCommand extends MakeCommandBase
     {
         $name = $input->getArgument('name');
         $name = self::studly(is_string($name) ? $name : 'Sample');
+        if ($name === '' || !self::isClassName($name)) {
+            return self::invalid($output, 'Check name must be a class name, e.g. Database or redis');
+        }
         $class = str_ends_with($name, 'Check') ? $name : $name . 'Check';
         $label = strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', substr($class, 0, -5)));
+        if ($label === '') {
+            return self::invalid($output, 'Name the dependency, e.g. Redis: "Check" alone leaves the report label empty');
+        }
         [$namespace] = $this->rootNamespace();
 
         $source = <<<PHP

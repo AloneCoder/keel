@@ -6,20 +6,31 @@ namespace Keel\Tests\Kernel;
 
 use Keel\Container\Definitions;
 use Keel\Http\ArgumentResolver;
+use Keel\Http\Exception\HttpException;
+use Keel\Http\Responder;
 use Keel\Kernel\DispatchHandler;
 use Keel\Kernel\ErrorPage;
 use Keel\Kernel\ExceptionHandlerMiddleware;
 use Keel\Kernel\Kernel;
 use Keel\Kernel\ProblemDetails;
 use Keel\Kernel\RoutingMiddleware;
+use Keel\Routing\Route;
+use Keel\Routing\Router;
 use Keel\Tests\Kernel\Fixtures\ArrayLogger;
+use Keel\Tests\Kernel\Fixtures\BookingController;
 use Keel\Tests\Kernel\Fixtures\Clock;
 use Keel\Tests\Kernel\Fixtures\GlobalMiddleware;
 use Keel\Tests\Kernel\Fixtures\RequestCounter;
+use Keel\Tests\Kernel\Fixtures\StatefulMiddleware;
 use Keel\Tests\Kernel\Fixtures\UserController;
+use Keel\Tests\Routing\Fixtures\RootController;
+use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\ServerRequest;
+use Nyholm\Psr7Server\ServerRequestCreator;
+use Nyholm\Psr7Server\ServerRequestCreatorInterface;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 
@@ -181,10 +192,68 @@ final class KernelTest extends TestCase
 
         $notAllowed = $kernel->handle(new ServerRequest('PATCH', '/api/users/1'));
         self::assertSame(405, $notAllowed->getStatusCode());
-        self::assertSame('GET, PUT, DELETE', $notAllowed->getHeaderLine('Allow'));
+        self::assertSame('GET, HEAD, PUT, DELETE', $notAllowed->getHeaderLine('Allow'));
 
         $head = $kernel->handle(new ServerRequest('HEAD', '/api/users/1'));
         self::assertSame(200, $head->getStatusCode());
+    }
+
+    public function testEmptyUriPathIsTheRoot(): void
+    {
+        $router = Router::fromRoutes([new Route('/', ['GET'], [RootController::class, 'slashRoot'])]);
+        $kernel = Kernel::build(new Definitions(), [], router: $router);
+
+        $response = $kernel->handle(new ServerRequest('GET', 'http://localhost'));
+
+        self::assertSame(200, $response->getStatusCode(), 'PSR-7 "http://localhost" has an empty path, which is "/"');
+        self::assertSame('root', (string) $response->getBody());
+        self::assertSame(404, $kernel->handle(new ServerRequest('GET', 'http://localhost/nope'))->getStatusCode());
+    }
+
+    public function testFromBodyOnAScalarParameterIsAConfigurationError(): void
+    {
+        $body = self::json($this->kernel(debug: true)->handle(new ServerRequest('PUT', '/api/users/scalar', ['Content-Type' => 'application/json'], '{"a":1}')));
+
+        self::assertSame(500, $body['status']);
+        self::assertIsString($body['detail']);
+        self::assertStringContainsString('#[FromBody] needs a DTO class or an array, string cannot hold a request body', $body['detail']);
+    }
+
+    public function testAcceptQualityValuesDecideBetweenHtmlAndJson(): void
+    {
+        $kernel = $this->kernel();
+        $cases = [
+            'text/html;q=0.1, application/json;q=0.9' => 'application/problem+json',
+            'application/json;q=0.5, text/html' => 'text/html; charset=utf-8',
+            'application/json, text/html' => 'application/problem+json',
+            'text/html, application/json' => 'text/html; charset=utf-8',
+            'text/html;q=0, */*' => 'application/problem+json',
+            'application/xhtml+xml;q=0.8, application/problem+json;q=0.7' => 'text/html; charset=utf-8',
+            '*/*' => 'application/problem+json',
+            '' => 'application/problem+json',
+        ];
+
+        foreach ($cases as $accept => $expected) {
+            $response = $kernel->handle(new ServerRequest('GET', '/nope', $accept === '' ? [] : ['Accept' => $accept]));
+            self::assertSame($expected, $response->getHeaderLine('Content-Type'), 'Accept: ' . $accept);
+        }
+    }
+
+    public function testErrorResponseSurvivesInvalidUtf8AndRenderingFailures(): void
+    {
+        $factory = new Psr17Factory();
+        $middleware = new ExceptionHandlerMiddleware(new Responder($factory, $factory), debug: true);
+
+        $response = $middleware->render(new \RuntimeException("bad \xff bytes"), new ServerRequest('GET', '/'));
+        self::assertSame(500, $response->getStatusCode());
+        self::assertSame("bad \u{FFFD} bytes", self::json($response)['detail'], 'invalid bytes are substituted, not fatal');
+
+        // An HttpException carrying a header value PSR-7 refuses: rendering throws, the fallback answers.
+        $response = $middleware->render(new HttpException(400, 'x', ['X-Bad' => "a\r\nb"]), new ServerRequest('GET', '/'));
+        self::assertSame(500, $response->getStatusCode());
+        self::assertSame('application/problem+json', $response->getHeaderLine('Content-Type'));
+        self::assertSame(['type' => 'about:blank', 'title' => 'Internal Server Error', 'status' => 500], self::json($response));
+        self::assertFalse($response->hasHeader('X-Bad'));
     }
 
     public function testHttpExceptionFromControllerKeepsMessage(): void
@@ -268,5 +337,57 @@ final class KernelTest extends TestCase
         self::assertSame(0, $counter->hits);
         self::assertSame(1, $counter->resets);
         self::assertSame(['id' => 1, 'trace' => ['global', 'class'], 'hits' => 1], self::json($kernel->handle(new ServerRequest('GET', '/api/users/1'))));
+    }
+
+    public function testExplicitDefinitionsUnderTheInterfaceIdsAreNotShadowedByTheDefaults(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set(ResponseFactoryInterface::class, Psr17Factory::class);
+        $definitions->set(ServerRequestCreatorInterface::class, ServerRequestCreator::class);
+
+        Kernel::registerDefaults($definitions);
+
+        self::assertArrayNotHasKey(ResponseFactoryInterface::class, $definitions->aliases());
+        self::assertArrayNotHasKey(ServerRequestCreatorInterface::class, $definitions->aliases());
+        self::assertNull($definitions->definition(ServerRequestCreator::class));
+
+        $kernel = Kernel::build($definitions, [UserController::class]);
+        self::assertInstanceOf(Psr17Factory::class, $kernel->container->get(ResponseFactoryInterface::class));
+        self::assertInstanceOf(ServerRequestCreator::class, $kernel->container->get(ServerRequestCreatorInterface::class));
+    }
+
+
+    public function testTransientMiddlewareDoesNotCarryStateBetweenRequests(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set(Clock::class);
+        $definitions->instance(LoggerInterface::class, $this->logger);
+        $definitions->set(StatefulMiddleware::class)->transient();
+        $kernel = Kernel::build($definitions, [UserController::class], [StatefulMiddleware::class]);
+
+        for ($request = 1; $request <= 3; $request++) {
+            $response = $kernel->handle(new ServerRequest('GET', '/api/users/1'));
+            self::assertSame('1', $response->getHeaderLine('X-Stateful-Calls'), 'request ' . $request . ' got its own middleware instance');
+            $kernel->terminate();
+        }
+    }
+
+    public function testDtoConstructorRejectionIs400WhileOtherConstructorFailuresStay500(): void
+    {
+        $definitions = new Definitions();
+        $definitions->instance(LoggerInterface::class, $this->logger);
+        $kernel = Kernel::build($definitions, [BookingController::class]);
+        $json = ['Content-Type' => 'application/json'];
+
+        $response = $kernel->handle(new ServerRequest('POST', '/bookings', $json, '{"title":"x","range":{"start":5,"end":1}}'));
+        self::assertSame(400, $response->getStatusCode());
+        self::assertSame(['range: end must not be before start'], self::json($response)['errors']);
+
+        $response = $kernel->handle(new ServerRequest('POST', '/bookings', $json, '{"title":"x","range":{"start":1,"end":5}}'));
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(['title' => 'x', 'days' => 4], self::json($response));
+
+        $response = $kernel->handle(new ServerRequest('POST', '/broken', $json, '{"name":"x"}'));
+        self::assertSame(500, $response->getStatusCode(), 'a RuntimeException from a constructor is a bug, not client input');
     }
 }

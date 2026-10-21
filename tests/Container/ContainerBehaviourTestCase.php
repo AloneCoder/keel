@@ -22,9 +22,11 @@ use Keel\Tests\Container\Fixtures\CycleA;
 use Keel\Tests\Container\Fixtures\Database;
 use Keel\Tests\Container\Fixtures\Dispatcher;
 use Keel\Tests\Container\Fixtures\ExplodingFactory;
+use Keel\Tests\Container\Fixtures\ExplodingReset;
 use Keel\Tests\Container\Fixtures\FrozenClock;
 use Keel\Tests\Container\Fixtures\Handler;
 use Keel\Tests\Container\Fixtures\HeavyService;
+use Keel\Tests\Container\Fixtures\HiddenFactory;
 use Keel\Tests\Container\Fixtures\HttpConfig;
 use Keel\Tests\Container\Fixtures\LazyCache;
 use Keel\Tests\Container\Fixtures\Logger;
@@ -33,11 +35,13 @@ use Keel\Tests\Container\Fixtures\Mode;
 use Keel\Tests\Container\Fixtures\Newsletter;
 use Keel\Tests\Container\Fixtures\NodeA;
 use Keel\Tests\Container\Fixtures\NodeB;
+use Keel\Tests\Container\Fixtures\NullableDeps;
 use Keel\Tests\Container\Fixtures\RequestCache;
 use Keel\Tests\Container\Fixtures\Server;
 use Keel\Tests\Container\Fixtures\SystemClock;
 use Keel\Tests\Container\Fixtures\Unresolvable;
 use PHPUnit\Framework\TestCase;
+use Psr\Container\NotFoundExceptionInterface;
 
 /**
  * Behaviour every container implementation must share. Subclasses only decide how the
@@ -45,7 +49,7 @@ use PHPUnit\Framework\TestCase;
  */
 abstract class ContainerBehaviourTestCase extends TestCase
 {
-    abstract protected function createContainer(Definitions $definitions): ContainerInterface;
+    abstract protected function createContainer(Definitions $definitions, bool $autowire = true): ContainerInterface;
 
     protected function setUp(): void
     {
@@ -353,14 +357,143 @@ abstract class ContainerBehaviourTestCase extends TestCase
         $container->get(Unresolvable::class);
     }
 
-    public function testNotFoundMessageCarriesResolutionChain(): void
+    public function testMissingDependencyIsAContainerExceptionWithTheChainNotANotFound(): void
     {
         $definitions = new Definitions();
         $definitions->set('broken', Mailer::class)->argument('logger', new Ref('missing'));
         $container = $this->createContainer($definitions);
+        self::assertTrue($container->has('broken'));
 
-        $this->expectException(NotFoundException::class);
-        $this->expectExceptionMessage('resolution chain: broken');
-        $container->get('broken');
+        try {
+            $container->get('broken');
+            self::fail('expected a ContainerException');
+        } catch (ContainerException $exception) {
+            self::assertNotInstanceOf(NotFoundExceptionInterface::class, $exception, 'PSR-11: only the requested id itself can be "not found"');
+            self::assertSame('Service "missing" is not registered and cannot be autowired (resolution chain: broken)', $exception->getMessage());
+        }
+    }
+
+    public function testNullableClassParameterWithoutDefaultIsOptional(): void
+    {
+        $container = $this->createContainer(new Definitions());
+
+        $service = $container->get(NullableDeps::class);
+
+        self::assertNull($service->clock, 'interface without alias: null, like a nullable scalar');
+        self::assertSame($container->get(Logger::class), $service->logger, 'autowirable class: injected');
+    }
+
+    public function testServiceWinsOverParameterWithTheSameId(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set('shared-id', Logger::class);
+        $definitions->parameter('shared-id', 'scalar');
+        $container = $this->createContainer($definitions);
+
+        self::assertInstanceOf(Logger::class, $container->get('shared-id'), 'lookup order is instances, services, parameters in both containers');
+        self::assertTrue($container->has('shared-id'));
+    }
+
+    public function testResetVisitsEveryServiceEvenWhenOneFailsAndReportsTheFailure(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set('exploding', ExplodingReset::class);
+        $definitions->set(RequestCache::class);
+        $container = $this->createContainer($definitions);
+        $container->get('exploding');
+        $cache = $container->get(RequestCache::class);
+
+        try {
+            $container->reset();
+            self::fail('expected a ContainerException');
+        } catch (ContainerException $exception) {
+            self::assertSame('1 service(s) failed to reset: boom (RuntimeException)', $exception->getMessage());
+            self::assertInstanceOf(\RuntimeException::class, $exception->getPrevious());
+        }
+
+        self::assertSame(1, $cache->resets, 'services after the failing one are still reset');
+    }
+
+    public function testAliasLoopIsRejectedWhenTheContainerIsBuilt(): void
+    {
+        $definitions = new Definitions();
+        $definitions->alias('a', 'b');
+        $definitions->alias('b', 'a');
+
+        $this->expectException(ContainerException::class);
+        $this->expectExceptionMessage('Alias loop detected');
+        $this->createContainer($definitions);
+    }
+
+    public function testAliasCollidingWithADefinitionIdIsRejected(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set('svc', Logger::class);
+        // Declared after set(): only the final aliases() pass can notice the collision.
+        $definitions->set(Counter::class)->alias('svc');
+
+        $this->expectException(ContainerException::class);
+        $this->expectExceptionMessage('"svc" is both an alias and a definition id');
+        $this->createContainer($definitions);
+    }
+
+    public function testImplementationRegisteredUnderItsOwnAliasIdWorks(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set(Clock::class, SystemClock::class); // SystemClock carries #[Alias(Clock::class)]
+        $container = $this->createContainer($definitions);
+
+        self::assertInstanceOf(SystemClock::class, $container->get(Clock::class));
+    }
+
+
+    /**
+     * Reflection could invoke a private method; generated code cannot. Both refuse it the same way
+     * (the compiled container at compile time, the runtime container when the service is built).
+     */
+    public function testNonPublicFactoryMethodsAreRejected(): void
+    {
+        foreach ([['make', HiddenFactory::class . '::make'], ['open', [HiddenFactory::class, 'open']]] as [$method, $factory]) {
+            $definitions = new Definitions();
+            $definitions->set('hidden', Logger::class)->factory($factory);
+
+            try {
+                $this->createContainer($definitions)->get('hidden');
+                self::fail('accepted the non-public factory ' . $method);
+            } catch (ContainerException $e) {
+                self::assertSame(sprintf('Factory %s::%s of "hidden" must be public', HiddenFactory::class, $method), $e->getMessage());
+            }
+        }
+    }
+
+
+    /**
+     * autowire: false means the same thing in both containers: only registered definitions resolve.
+     * The compiled container lists the classes it autowired at compile time and sets them aside.
+     */
+    public function testAutowireOffResolvesRegisteredDefinitionsOnly(): void
+    {
+        $definitions = new Definitions();
+        $definitions->parameter('db.dsn', 'x');
+        $definitions->set(Database::class);
+        $definitions->set(NullableDeps::class);
+        $definitions->set(Mailer::class);
+        $container = $this->createContainer($definitions, autowire: false);
+
+        self::assertFalse($container->has(Logger::class));
+        self::assertNull($container->get(Database::class)->logger, 'optional dependency with a default stays at the default');
+        self::assertNull($container->get(NullableDeps::class)->logger, 'nullable dependency stays null');
+
+        try {
+            $container->get(Mailer::class);
+            self::fail('a required unregistered dependency must not be built');
+        } catch (ContainerException $e) {
+            self::assertSame(sprintf('Service "%s" is not registered and cannot be autowired (resolution chain: %s)', Logger::class, Mailer::class), $e->getMessage());
+        }
+
+        $definitions->set(Logger::class);
+        $container = $this->createContainer($definitions, autowire: false);
+        self::assertInstanceOf(Logger::class, $container->get(Mailer::class)->logger, 'registered: resolved with autowiring off');
+        self::assertSame($container->get(Logger::class), $container->get(Database::class)->logger);
     }
 }

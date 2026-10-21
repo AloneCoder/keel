@@ -84,6 +84,28 @@ final class AuthSecurityTest extends TestCase
         $client->request('POST', '/ingest', ['Authorization' => $header], '{"amount":1000}')->assertStatus(401);
     }
 
+    public function testExactHmacReplayFailsWhenACounterStorageIsRegistered(): void
+    {
+        $header = HmacAuthenticator::sign('svc', 'top-secret', 'POST', '/ingest', '{"amount":1}', time());
+        $client = $this->client();
+        $client->request('POST', '/ingest', ['Authorization' => $header], '{"amount":1}')->assertOk();
+        $client->request('POST', '/ingest', ['Authorization' => $header], '{"amount":1}')->assertProblem(401, 'Replayed signature');
+    }
+
+    public function testUnknownKeyIdDoesNotRevealItself(): void
+    {
+        $client = $this->client();
+        $unknown = $client->get('/me', ['Authorization' => HmacAuthenticator::sign('nobody', 'top-secret', 'GET', '/me', '', time())]);
+        $wrong = $client->get('/me', ['Authorization' => HmacAuthenticator::sign('svc', 'wrong', 'GET', '/me', '', time())]);
+        self::assertSame(401, $unknown->status());
+        self::assertSame($wrong->body(), $unknown->body(), 'same problem body for an unknown key id and a wrong signature');
+    }
+
+    public function testMalformedBearerIsRejectedOnPublicRoutesToo(): void
+    {
+        $this->client()->get('/feed', ['Authorization' => 'Bearer a b'])->assertProblem(401, 'Malformed bearer token');
+    }
+
     public function testForwardedHeadersDoNotResetTheRateLimitWithoutTrustedProxies(): void
     {
         $client = $this->client();

@@ -27,7 +27,7 @@ final class DbalCheck implements HealthCheck
         try {
             $this->connection->executeQuery($this->connection->getDatabasePlatform()->getDummySelectSQL())->free();
         } catch (\Throwable $e) {
-            return HealthResult::down($e->getMessage());
+            return HealthResult::down($e->getMessage(), exception: $e);
         }
         $ms = round((hrtime(true) - $started) / 1e6, 2);
 

@@ -17,10 +17,18 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Route middleware added by #[RateLimit]: answers RateLimit-Limit / RateLimit-Remaining /
  * RateLimit-Reset (IETF draft) and 429 + Retry-After once the window is exhausted.
+ *
+ * Counters are keyed by method, route pattern and subject ("ip:1.2.3.4" or "principal:u1").
+ * With by: 'principal' and no principal on the request yet (AuthMiddleware absent, or #[Auth]
+ * declared after #[RateLimit]) the guard authenticates through Authentication itself, so the
+ * limit never silently degrades to per-IP for a request that does carry credentials.
  */
 final class RateLimitGuard implements MiddlewareInterface
 {
-    public function __construct(private readonly RateLimiter $limiter) {}
+    public function __construct(
+        private readonly RateLimiter $limiter,
+        private readonly ?Authentication $authentication = null,
+    ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -30,11 +38,21 @@ final class RateLimitGuard implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        $by = $option['by'] ?? 'ip';
-        $subject = ($by === 'principal' ? Authentication::principal($request)?->id() : null)
-            ?? TrustedProxiesMiddleware::clientIp($request)
-            ?? 'unknown';
-        $result = $this->limiter->hit($match->route->path . '|' . $subject, $option['limit'], $option['window']);
+        $subject = null;
+        if (($option['by'] ?? 'ip') === 'principal') {
+            $principal = Authentication::principal($request);
+            if ($principal === null && $this->authentication !== null) {
+                $principal = $this->authentication->authenticate($request);
+                if ($principal !== null) {
+                    $request = Authentication::attach($request, $principal);
+                }
+            }
+            $subject = $principal === null ? null : 'principal:' . $principal->id();
+        }
+        $subject ??= 'ip:' . (TrustedProxiesMiddleware::clientIp($request) ?? 'unknown');
+
+        $key = $request->getMethod() . '|' . $match->route->path . '|' . $subject;
+        $result = $this->limiter->hit($key, $option['limit'], $option['window']);
 
         $headers = [
             'RateLimit-Limit' => (string) $result->limit,

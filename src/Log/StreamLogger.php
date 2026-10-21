@@ -71,6 +71,9 @@ final class StreamLogger extends AbstractLogger
 
         $suffix = $context === [] ? '' : ' ' . json_encode($context, \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES | \JSON_PARTIAL_OUTPUT_ON_ERROR);
 
+        // One record per line: a line break inside the message must not forge another record.
+        $text = str_replace(["\r\n", "\r", "\n"], '\n', $text);
+
         return sprintf("[%s] %s.%s: %s%s\n", $time, $this->config->channel, strtoupper($level), $text, $suffix);
     }
 

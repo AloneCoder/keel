@@ -40,12 +40,20 @@ final class RatesService
 | Driver | Shared by | Notes |
 |---|---|---|
 | `ApcuCache` | every php-fpm child or FrankenPHP thread of the server | fastest; cleared on restart; needs ext-apcu with `apc.enable_cli=1` for console commands |
-| `FileCache` | every worker on the host | one serialized file per entry, atomic writes, expired entries removed on read and by a probabilistic sweep (`sweep()` runs it on demand) |
+| `FileCache` | every worker on the host | one serialized file per entry, atomic writes, expired entries removed on read and by a probabilistic sweep (`sweep()` runs it on demand, and drops temporary files a crashed write left behind) |
 | `ArrayCache` | the current process only | tests and per-worker memoization |
 
 Keys follow PSR-16: up to 256 characters, none of `{}()/\@:`; a bad key throws
 `InvalidKeyException` (a `Psr\SimpleCache\InvalidArgumentException`). TTLs are seconds or a
 `DateInterval`; a non-positive TTL deletes. A stored `null` counts as a hit.
+
+**`FileCache` directory.** Entries are unserialized with every class allowed, so whoever can
+write to the directory can inject objects into your process. The driver creates a missing
+directory with mode `0700` and refuses one that is a symlink, writable by everyone, or
+group-writable while owned by another user (`RuntimeException`). Without `directory` the default
+is a predictable path under the system temp dir: fine on a host that runs only your
+application, but on a shared machine set `directory` to a private path such as
+`$projectDir . '/var/cache/data'`.
 
 ## Worker mode
 

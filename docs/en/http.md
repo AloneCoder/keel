@@ -28,8 +28,10 @@ compiled container and a route cache use the constructor
 before compiling.
 
 `Pipeline` is a PSR-15 handler: middleware run in declaration order (FIFO); class names are
-resolved from the container on first use and cached. A pipeline instance holds no request
-state and is reused across requests.
+resolved from the container on every request, so the container owns their lifetime: a shared
+service is one instance for the whole worker (implement `Resettable` to drop request state), a
+transient one is fresh for each request. A pipeline instance holds no request state and is
+reused across requests.
 
 ## Handler arguments
 
@@ -39,7 +41,8 @@ state and is reused across requests.
 2. `#[FromQuery]`: a DTO is hydrated from all query parameters; a scalar is read from the
    query parameter with the argument's name (missing without a default: 400);
 3. `#[FromBody]`: JSON (`application/json`, `*+json`) or `getParsedBody()`; a DTO is hydrated,
-   an `array` receives the body as is; malformed JSON: 400;
+   an `array` receives the body as is; malformed JSON: 400. On a scalar parameter (`string`,
+   `int`, ...) the attribute is a configuration error: `LogicException` on the first request;
 4. a route placeholder with the parameter's name, cast to the type (`int`, `float`, `bool`,
    `string`, enum); a mismatch: 400;
 5. a service from the container by type (`has()`);
@@ -53,6 +56,20 @@ it casts scalars (`'31'` → `31`, `'true'` → `true`), enums by value or case 
 from arrays, union types by trial, and applies defaults and `null`. Every problem is collected
 and reported as one `BadRequestException` with an `errors` field:
 `["email: field is required", "address.zip: must be a string"]`.
+
+A DTO constructor may reject a combination of values that no single rule can express by throwing
+`InvalidArgumentException` or `DomainException`: the message becomes one more error, prefixed with
+the field path for a nested DTO (`range: end must not be before start`). Any other exception from a
+constructor is a bug in the DTO and answers 500.
+
+JSON bodies are decoded with PHP's default nesting limit of 512 levels; a deeper document is a 400
+("Maximum stack depth exceeded"). The body *size* is not capped by the framework: set
+`post_max_size`, `client_max_body_size` or the equivalent of your server in front of it.
+
+Integers must fit in `int`: `"99999999999999999999"` or `1e20` is "must be an integer", not a
+silently saturated value. Union members are tried in a fixed order, `int`, `float`, `bool`,
+`string`, then classes and enums, whatever the declaration order (PHP itself reports `int|string`
+as `string|int`): for `int|string` the value `"42"` becomes `42` and `"x"` stays a string.
 
 ## Responses
 
@@ -81,9 +98,14 @@ and reported as one `BadRequestException` with an `errors` field:
 - Any other exception is a 500 with the title "Internal Server Error" and no `detail`; it is
   logged through the `LoggerInterface` from the container when one is registered.
 - In `debug` mode `detail` and an `exception` object with class, file, line and trace are added.
-- When the client prefers `text/html` (per `Accept`, with no JSON listed earlier) an HTML page is
-  sent instead of JSON: status and title only in production; in debug the exception chain, the
-  trace, the request with `Authorization`/`Cookie` redacted and a "Copy as Markdown" button.
+- When the client prefers `text/html` over JSON per `Accept` (higher `q`, or listed first for an
+  equal `q`) an HTML page is sent instead of JSON: status and title only in production; in debug
+  the exception chain, the trace, the request with `Authorization`/`Cookie` redacted and a
+  "Copy as Markdown" button.
+- The body is encoded with `ProblemDetails::JSON_FLAGS` (`Responder::JSON_FLAGS` plus
+  `JSON_INVALID_UTF8_SUBSTITUTE`), so a message with stray bytes cannot break the error response.
+  Should rendering fail anyway (an `HttpException` with a header value PSR-7 refuses, for
+  instance), the failure is logged as `critical` and a bare `{"status":500}` problem is sent.
 
 ## Validation
 
@@ -116,9 +138,15 @@ Listed in `HttpConfig`; their settings are plain config objects in `config/`:
 
 | Middleware | Config | What it does |
 |---|---|---|
-| `CorsMiddleware` | `CorsConfig` | answers preflights (204) before routing, adds `Access-Control-*`; origins exact, `*` or patterns like `https://*.example.com` |
+| `CorsMiddleware` | `CorsConfig` | answers preflights (204) before routing, adds `Access-Control-*`; origins exact, `*` or patterns like `https://*.example.com`; `allowCredentials` requires an explicit origin list (`*` is refused in the constructor) |
 | `RequestIdMiddleware` | — | trusts a well-formed `X-Request-Id` or issues one; `request_id` attribute and response header |
 | `TrustedProxiesMiddleware` | `TrustedProxiesConfig` | applies `X-Forwarded-For/Proto/Host/Port` only from trusted CIDRs; client IP in the `client_ip` attribute |
+
+`TrustedProxiesMiddleware` takes the rightmost `X-Forwarded-For` address that is not itself a
+trusted proxy. When every hop is trusted, as with `proxies: ['*']`, it takes the rightmost valid
+address, the one appended by the proxy next to us, never the leftmost entry, which is whatever the
+client sent. A trusted `X-Forwarded-Proto` that changes the scheme also drops the port of the
+listening socket unless `X-Forwarded-Port` or a port in `X-Forwarded-Host` says otherwise.
 | `MethodOverrideMiddleware` | — | `POST` + `X-HTTP-Method-Override` → `PUT`/`PATCH`/`DELETE` |
 | `AuthMiddleware` | `AuthConfig` | authenticates requests carrying credentials, see [Authentication](auth.md) |
 | `HealthMiddleware` | `HealthConfig` | `/health` and `/health/live`, see [Health and metrics](observability.md) |

@@ -25,9 +25,9 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass(Instantiator::class)]
 final class ContainerTest extends ContainerBehaviourTestCase
 {
-    protected function createContainer(Definitions $definitions): ContainerInterface
+    protected function createContainer(Definitions $definitions, bool $autowire = true): ContainerInterface
     {
-        return new Container($definitions);
+        return new Container($definitions, $autowire);
     }
 
     public function testClosureFactoryIsAutowired(): void

@@ -69,6 +69,58 @@ final class DatabaseTest extends TestCase
         $result = new PdoCheck($pdo, 'primary')->check();
         self::assertSame(HealthStatus::Down, $result->status);
         self::assertSame('gone away', $result->detail);
+        self::assertInstanceOf(\PDOException::class, $result->exception, 'the exception travels with the result for logging');
+
+        $silent = new class extends \PDO {
+            public function __construct()
+            {
+                parent::__construct('sqlite::memory:');
+            }
+
+            public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): \PDOStatement|false
+            {
+                return false;
+            }
+        };
+        self::assertSame(HealthStatus::Down, new PdoCheck($silent)->check()->status, 'a false return (ERRMODE_SILENT) is down as well');
+    }
+
+    public function testPdoCheckConnectsLazilyAndFlagsOpenTransactions(): void
+    {
+        $attempts = 0;
+        $check = new PdoCheck(static function () use (&$attempts): \PDO {
+            if (++$attempts === 1) {
+                throw new \PDOException('SQLSTATE[HY000] [2002] Connection refused');
+            }
+
+            return new \PDO('sqlite::memory:', options: [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        });
+
+        $down = $check->check();
+        self::assertSame(HealthStatus::Down, $down->status, 'an unreachable database is a down check, not a broken middleware');
+        self::assertSame('SQLSTATE[HY000] [2002] Connection refused', $down->detail);
+
+        self::assertSame(HealthStatus::Up, $check->check()->status, 'the connection is retried on the next probe');
+        self::assertSame(2, $attempts);
+        self::assertSame(HealthStatus::Up, $check->check()->status);
+        self::assertSame(2, $attempts, 'once connected, the connection is kept');
+
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->beginTransaction();
+        $open = new PdoCheck($pdo)->check();
+        self::assertSame(HealthStatus::Degraded, $open->status);
+        self::assertSame('transaction left open', $open->detail);
+        $pdo->rollBack();
+        self::assertSame(HealthStatus::Up, new PdoCheck($pdo)->check()->status);
+
+        // Through the provider: the check is built even though the database cannot be opened.
+        $definitions = new Definitions();
+        $definitions->instance(PdoConfig::class, new PdoConfig('sqlite:/nonexistent/dir/db.sqlite'));
+        $definitions->load(new PdoProvider());
+        $checks = new Container($definitions)->tagged(HealthCheck::TAG);
+        self::assertCount(1, $checks);
+        self::assertInstanceOf(PdoCheck::class, $checks[0]);
+        self::assertSame(HealthStatus::Down, $checks[0]->check()->status);
     }
 
     public function testDbalProviderAndUrlParsing(): void

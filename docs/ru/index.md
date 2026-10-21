@@ -9,7 +9,6 @@ composer create-project keel/skeleton my-app
 cd my-app && composer serve
 ```
 
-- [Проектные решения](design.md) объясняют, почему фреймворк устроен именно так.
 - [Контейнер](container.md), [Роутинг](routing.md), [HTTP и ядро](http.md), [Рантаймы](runtime.md),
   [Приложение](app.md), [Сессии](session.md), [Тестирование](testing.md) описывают компоненты.
 - [Аутентификация и лимиты](auth.md), [OpenAPI](openapi.md), [Здоровье и метрики](observability.md) —

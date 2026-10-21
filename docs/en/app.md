@@ -25,7 +25,9 @@ exit(ConsoleFactory::create(App::boot(dirname(__DIR__)))->run());
 `App::boot($projectDir, ?Env $env, ?\Closure $configure)`:
 
 1. `Env`: a snapshot of `getenv()`, `$_ENV`, `$_SERVER` plus `.env` when the file exists;
-   the real environment wins over the file. Read once per process.
+   the real environment wins over the file. Read once per process. Request variables in
+   `$_SERVER` (`HTTP_*`, `REDIRECT_*`, `REQUEST_URI`, `REMOTE_ADDR`, ...) are left out unless
+   `getenv()` or `$_ENV` also has them: under php-fpm they describe one request, not the process.
 2. `config/*.php` → objects registered in the container under their class. Known to the
    core: `AppConfig` (env, debug, cacheDir), `HttpConfig` (global middleware),
    `DiscoveryConfig` (scanned directories, `src/` by default), `ServicesConfig`
@@ -39,6 +41,13 @@ exit(ConsoleFactory::create(App::boot(dirname(__DIR__)))->run());
    environment, so several apps can live in one process.
 6. `Kernel` with the middleware from `HttpConfig`.
 
+A cached boot re-supplies only `Env`, the config objects and `Router` to the compiled
+container, so a provider (or `$configure`) calling `Definitions::instance()` for anything else
+would work once and fail on every later boot. Compiling such definitions is refused with a
+`ContainerException`; build the object in a static factory
+(`$d->set($id, Foo::class)->factory(FooFactory::class . '::create')`) or return it from a
+`config/*.php` file instead.
+
 In production with warm caches boot takes the short path: config objects, the route cache,
 the compiled container and the listener list from the discovery cache. `Definitions`, the
 scanner, the discovery classes and reflection are never loaded; `keel:compile` rebuilds all
@@ -46,7 +55,12 @@ of it in a separate process.
 
 Production caches do not refresh themselves: after a deploy run `bin/console keel:compile`
 or delete `var/cache/<env>/`. In debug only discovery is cached, validated by file count
-and newest mtime.
+and newest mtime (a `stat()` pass; no file is read while nothing changed).
+
+PHP cannot reload a class: when `container.php` is rewritten in a process that already loaded
+it (`App::compile()` followed by `App::boot()`, a long-lived worker), the next boot compares
+the file with the loaded class's `CONTENT_HASH` and throws a `RuntimeException` asking for a
+new process instead of silently serving the old container.
 
 ## Config
 
@@ -60,15 +74,20 @@ final class Mailer { public function __construct(private MailerConfig $config) {
 ```
 
 `Env`: `get`, `require`, `bool` (`1/true/yes/on`), `int`, `has`, `with`. `.env` parsing:
-`KEY=value`, single and double quotes (`\"` works inside double quotes), `#` comments,
+`KEY=value`, single and double quotes (`\"` works inside double quotes; a quoted value ends at
+its closing quote, anything after it is a comment), ` #` comments after unquoted values,
 no variable expansion.
 
 ## Discovery
 
 `Discoverer` scans only the directories in `DiscoveryConfig::$paths`, never `vendor/`.
-Files without `#[` are skipped before tokenizing; class names are read from tokens without
-loading the file, and reflection is created only for classes the autoloader can load
-(one class per file, PSR-4).
+Files without `#[` or `extends` are skipped before tokenizing (a subclass inherits the
+attributed methods of its parent without repeating them); class names are read from tokens
+without loading the file, and reflection is created only for classes the autoloader can load
+(one class per file, PSR-4). A class that fails to load, say because its parent comes from a
+package that is not installed, is skipped rather than aborting the boot. Cached results are
+validated on restore: listener methods must exist, commands must extend `Command`, and
+`#[Listener(event: ...)]` must name an existing class or interface.
 
 Built-in discoveries:
 

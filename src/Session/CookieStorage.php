@@ -7,8 +7,12 @@ namespace Keel\Session;
 /**
  * Stateless storage: the session data itself travels in the signed cookie, with an expiry
  * timestamp. Nothing to clean up on the server; the cookie must stay under 4 KB.
+ *
+ * Signed is not revocable: destroy() only clears the browser's cookie, a copy stays valid until
+ * its expiry, and the client may send back any older cookie it kept. Keep authoritative state
+ * (login after logout, counters, one-time flags) in a server-side storage.
  */
-final class CookieStorage implements SessionStorageInterface
+final class CookieStorage implements SessionStorageInterface, SessionExpiry
 {
     public const int MAX_SIZE = 4000;
 
@@ -16,18 +20,12 @@ final class CookieStorage implements SessionStorageInterface
 
     public function read(string $id): ?array
     {
-        $payload = $this->signer->verify($id);
-        if ($payload === null) {
-            return null;
-        }
+        return $this->decode($id)['data'] ?? null;
+    }
 
-        $decoded = json_decode($payload, true);
-        if (!is_array($decoded) || !is_int($decoded['exp'] ?? null) || !is_array($decoded['data'] ?? null) || $decoded['exp'] < time()) {
-            return null;
-        }
-
-        /** @var array<string, mixed> */
-        return $decoded['data'];
+    public function expiresAt(string $id): ?int
+    {
+        return $this->decode($id)['exp'] ?? null;
     }
 
     public function write(string $id, array $data, int $ttl): void
@@ -48,5 +46,28 @@ final class CookieStorage implements SessionStorageInterface
         }
 
         return $value;
+    }
+
+    /**
+     * The verified, unexpired payload of a cookie value.
+     *
+     * @return array{exp: int, data: array<string, mixed>}|null
+     */
+    public function decode(string $cookie): ?array
+    {
+        $payload = $this->signer->verify($cookie);
+        if ($payload === null) {
+            return null;
+        }
+
+        $decoded = json_decode($payload, true);
+        if (!is_array($decoded) || !is_int($decoded['exp'] ?? null) || !is_array($decoded['data'] ?? null) || $decoded['exp'] < time()) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $data */
+        $data = $decoded['data'];
+
+        return ['exp' => $decoded['exp'], 'data' => $data];
     }
 }

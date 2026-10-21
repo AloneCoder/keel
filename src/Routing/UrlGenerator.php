@@ -29,23 +29,28 @@ final class UrlGenerator
         $parsed = $this->parser->parse($route->path);
 
         $path = $route->path;
-        foreach ($parsed['variables'] as $variable) {
+        foreach ($parsed['variables'] as $position => $variable) {
             if (!array_key_exists($variable, $params)) {
                 throw new RoutingException(sprintf('Route "%s" needs parameter "%s"', $name, $variable));
             }
 
+            // The value is checked against the constraint as the application sees it (decoded, with /u
+            // so \p{L} and friends work) or as the matcher sees it (percent-encoded: "a/b" satisfies
+            // [^/]+ once it is "a%2Fb").
             $value = (string) $params[$variable];
+            $encoded = rawurlencode($value);
+            $constraint = '~^(?:' . $parsed['patterns'][$position] . ')$~';
+            if (preg_match($constraint . 'u', $value) !== 1 && preg_match($constraint, $encoded) !== 1) {
+                throw new RoutingException(sprintf('Parameters for route "%s" do not satisfy its pattern: "%s" is not a valid "%s"', $name, $value, $variable));
+            }
+
             $path = (string) preg_replace(
                 '~\{' . preg_quote($variable, '~') . '(?::(?:[^{}]|\{[^{}]*\})*)?\}~',
-                rawurlencode($value),
+                $encoded,
                 $path,
                 1,
             );
             unset($params[$variable]);
-        }
-
-        if ($parsed['regex'] !== null && preg_match('~^' . $parsed['regex'] . '$~', $path) !== 1) {
-            throw new RoutingException(sprintf('Parameters for route "%s" do not satisfy its pattern', $name));
         }
 
         $query = array_filter($params, static fn(mixed $value): bool => $value !== null);

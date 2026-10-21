@@ -19,12 +19,30 @@ final class ConfigLoader
             return [];
         }
 
-        $files = glob($directory . '/*.php') ?: [];
-        sort($files);
+        // scandir, not glob: a project path with "[" or "*" must not silently load nothing.
+        $entries = scandir($directory, SCANDIR_SORT_ASCENDING);
+        if ($entries === false) {
+            throw new \RuntimeException(sprintf('Cannot read config directory "%s"', $directory));
+        }
 
         $configs = [];
-        foreach ($files as $file) {
+        $sources = [];
+        foreach ($entries as $entry) {
+            $file = $directory . '/' . $entry;
+            if (!str_ends_with($entry, '.php') || !is_file($file)) {
+                continue;
+            }
+
             $object = self::evaluate($file, $env, $projectDir);
+            if (isset($sources[$object::class])) {
+                throw new \RuntimeException(sprintf(
+                    'Config files "%s" and "%s" both return a %s; one object per class',
+                    $sources[$object::class],
+                    $file,
+                    $object::class,
+                ));
+            }
+            $sources[$object::class] = $file;
             $configs[$object::class] = $object;
         }
 

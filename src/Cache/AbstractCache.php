@@ -23,7 +23,8 @@ abstract class AbstractCache implements CacheInterface
     {
         $values = [];
         foreach ($keys as $key) {
-            $values[$key] = $this->get($key, $default);
+            // PHP turns numeric-string array keys into ints; the driver always sees a string.
+            $values[$key] = $this->get((string) $key, $default);
         }
 
         return $values;
@@ -36,7 +37,7 @@ abstract class AbstractCache implements CacheInterface
     {
         $ok = true;
         foreach ($values as $key => $value) {
-            $ok = $this->set($key, $value, $ttl) && $ok;
+            $ok = $this->set((string) $key, $value, $ttl) && $ok;
         }
 
         return $ok;
@@ -49,7 +50,7 @@ abstract class AbstractCache implements CacheInterface
     {
         $ok = true;
         foreach ($keys as $key) {
-            $ok = $this->delete($key) && $ok;
+            $ok = $this->delete((string) $key) && $ok;
         }
 
         return $ok;

@@ -40,7 +40,7 @@ final class OpenApiMiddleware implements MiddlewareInterface
             return $this->responder->text($this->document(), 200, 'application/json');
         }
         if ($this->config->docsPath !== null && $path === $this->config->docsPath && $this->config->specPath !== null) {
-            return $this->responder->text(self::page($this->config->title, $this->config->specPath), 200, 'text/html; charset=utf-8');
+            return $this->responder->text(self::page($this->config->title, $this->config->specPath, $this->config->docsScript), 200, 'text/html; charset=utf-8');
         }
 
         return $handler->handle($request);
@@ -55,10 +55,11 @@ final class OpenApiMiddleware implements MiddlewareInterface
         return $this->document;
     }
 
-    private static function page(string $title, string $specPath): string
+    private static function page(string $title, string $specPath, string $script): string
     {
         $title = htmlspecialchars($title, \ENT_QUOTES | \ENT_HTML5);
         $spec = htmlspecialchars($specPath, \ENT_QUOTES | \ENT_HTML5);
+        $script = htmlspecialchars($script, \ENT_QUOTES | \ENT_HTML5);
 
         return <<<HTML
             <!doctype html>
@@ -70,7 +71,7 @@ final class OpenApiMiddleware implements MiddlewareInterface
             </head>
             <body>
             <script id="api-reference" data-url="{$spec}"></script>
-            <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+            <script src="{$script}"></script>
             </body>
             </html>
 

@@ -6,10 +6,8 @@ A small, worker-first PHP micro-framework: PSR-7/11/14/15/17 all the way, attrib
 routing with scoped discovery, a compiled container and router, and the same code running
 under php-fpm, FrankenPHP worker mode and RoadRunner.
 
-Status: 1.2.1, API frozen under semantic versioning. Documentation site: https://alonecoder.github.io/keel/ Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md). See the roadmap in the design document.
+Status: 1.2.1, API frozen under semantic versioning. Documentation site: https://alonecoder.github.io/keel/ Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md) and the roadmap below.
 
-- [Landscape analysis](docs/en/analysis.md) · [по-русски](docs/ru/analysis.md)
-- [Design decisions and roadmap](docs/en/design.md) · [по-русски](docs/ru/design.md)
 - [Container](docs/en/container.md) · [по-русски](docs/ru/container.md)
 - [Routing](docs/en/routing.md) · [по-русски](docs/ru/routing.md)
 - [HTTP and kernel](docs/en/http.md) · [по-русски](docs/ru/http.md)
@@ -31,6 +29,11 @@ curl http://127.0.0.1:8080/hello/world
 php examples/hello/bin/console keel:routes
 ```
 
+The console ships `keel:routes`, `keel:compile`, `keel:cache-clear`, `keel:debug:container`,
+`keel:preload`, `keel:openapi`, `keel:serve` (built-in server or FrankenPHP worker mode with
+`--watch`) and the `keel:make:*` generators for controllers, commands, middleware, listeners,
+health checks and authenticators; see [Application](docs/en/app.md).
+
 Requirements: PHP >= 8.4.
 
 ```bash
@@ -38,7 +41,11 @@ composer install
 composer test
 composer stan
 composer cs
+composer infection
 ```
+
+CI runs the tests on PHP 8.4 and 8.5, PHPStan at level max, php-cs-fixer, and Infection on
+the container, router, auth, rate limiting, health and metrics (MSI gate 80%).
 
 ## Packages
 
@@ -83,7 +90,8 @@ and `terminate()`.
 API key, HMAC), `#[RateLimit]`, health endpoints, Prometheus metrics, an OpenAPI 3.1 document
 derived from the code, and `keel:serve` for FrankenPHP worker mode in development. 1.2 wired the
 usual neighbours: PDO or Doctrine DBAL with health checks, Twig or Latte, a dependency-free PSR-16
-cache and a PSR-18 client on curl. Next: feedback from real projects decides; queues and
+cache and a PSR-18 client on curl; 1.2.1 added the health-check and authenticator generators and
+widened mutation testing. Next: feedback from real projects decides; queues and
 schedulers stay out of scope.
 
 License: MIT.

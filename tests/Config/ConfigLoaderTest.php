@@ -37,6 +37,30 @@ final class ConfigLoaderTest extends TestCase
         self::assertSame([], new ConfigLoader()->load('/nonexistent', new Env([]), '/p'));
     }
 
+    public function testDuplicateConfigClassIsRejected(): void
+    {
+        $dir = sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/config-dup';
+        @mkdir($dir, 0o775, true);
+        file_put_contents($dir . '/a.php', '<?php return new stdClass();');
+        file_put_contents($dir . '/b.php', '<?php return new stdClass();');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(sprintf('Config files "%s/a.php" and "%s/b.php" both return a stdClass', $dir, $dir));
+        new ConfigLoader()->load($dir, new Env([]), '/p');
+    }
+
+    public function testDirectoryWithGlobMetacharactersIsRead(): void
+    {
+        $dir = sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/config[1]*';
+        @mkdir($dir, 0o775, true);
+        file_put_contents($dir . '/x.php', '<?php return new ArrayObject(["ok"]);');
+        file_put_contents($dir . '/notes.txt', 'ignored');
+
+        $configs = new ConfigLoader()->load($dir, new Env([]), '/p');
+
+        self::assertSame([\ArrayObject::class], array_keys($configs));
+    }
+
     public function testNonObjectIsRejected(): void
     {
         $dir = sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/config-bad';

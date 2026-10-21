@@ -6,7 +6,14 @@ declare(strict_types=1);
 $uri = $_SERVER['REQUEST_URI'] ?? '/';
 $path = parse_url(is_string($uri) ? $uri : '/', \PHP_URL_PATH);
 if ($path === '/redirect') {
-    header('Location: /echo?from=redirect', true, 302);
+    // ?to=<location>&code=<status>; defaults keep the original behaviour.
+    $to = $_GET['to'] ?? '/echo?from=redirect';
+    $code = $_GET['code'] ?? '302';
+    header('Location: ' . (is_string($to) ? $to : '/echo'), true, is_string($code) ? (int) $code : 302);
+    exit;
+}
+if ($path === '/loop') {
+    header('Location: /loop', true, 302);
     exit;
 }
 if ($path === '/slow') {
@@ -18,6 +25,8 @@ if ($path === '/status') {
     header('X-Custom: yes');
     header('X-Multi: a');
     header('X-Multi: b', false);
+    header('Set-Cookie: a=1', false);
+    header('set-cookie: b=2', false);
     echo 'nope';
     exit;
 }

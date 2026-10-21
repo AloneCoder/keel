@@ -19,8 +19,15 @@ final class RateLimiter
         $this->storage = $storage ?? (ApcuCounters::available() ? new ApcuCounters() : new InMemoryCounters());
     }
 
+    /**
+     * @throws \InvalidArgumentException when $limit or $window is below 1
+     */
     public function hit(string $key, int $limit, int $window): RateLimitResult
     {
+        if ($limit < 1 || $window < 1) {
+            throw new \InvalidArgumentException(sprintf('Rate limit needs a limit and a window of at least 1, got limit %d and window %d', $limit, $window));
+        }
+
         $now = $this->clock?->now()->getTimestamp() ?? time();
         $start = intdiv($now, $window) * $window;
         $count = $this->storage->increment($key . ':' . $start, $window);

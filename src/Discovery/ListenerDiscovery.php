@@ -51,7 +51,7 @@ final class ListenerDiscovery implements DiscoveryInterface
                 continue;
             }
             [$class, $method, $event, $priority] = array_values($entry);
-            if (is_string($class) && class_exists($class) && is_string($method) && is_string($event) && (class_exists($event) || interface_exists($event)) && is_int($priority)) {
+            if (is_string($class) && class_exists($class) && is_string($method) && method_exists($class, $method) && is_string($event) && (class_exists($event) || interface_exists($event)) && is_int($priority)) {
                 $this->listeners[] = [$class, $method, $event, $priority];
             }
         }

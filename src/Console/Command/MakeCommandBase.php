@@ -12,12 +12,17 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * Shared machinery of the keel:make:* generators: the project's PSR-4 namespace for src/,
- * class name normalisation and safe file writing (never overwrites without --force).
+ * class name normalisation and validation, string literals for generated code, and safe file
+ * writing (never overwrites without --force).
  *
  * @internal
  */
 abstract class MakeCommandBase extends Command
 {
+    private const string CLASS_NAME = '/^[A-Za-z_][A-Za-z0-9_]*$/';
+
+    private const string CLASS_REFERENCE = '/^[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*$/';
+
     public function __construct(protected readonly App $app)
     {
         parent::__construct();
@@ -63,8 +68,42 @@ abstract class MakeCommandBase extends Command
         return implode('', array_map(ucfirst(...), array_filter($parts, static fn(string $p): bool => $p !== '')));
     }
 
+    /**
+     * A PHP class name without namespace: letters, digits and underscores, not starting with a digit.
+     */
+    protected static function isClassName(string $name): bool
+    {
+        return preg_match(self::CLASS_NAME, $name) === 1;
+    }
+
+    /**
+     * A possibly namespaced class name, as it appears after "use".
+     */
+    protected static function isClassReference(string $name): bool
+    {
+        return preg_match(self::CLASS_REFERENCE, $name) === 1;
+    }
+
+    /**
+     * The value as a single-quoted PHP string literal, so it cannot break out of the generated code.
+     */
+    protected static function literal(string $value): string
+    {
+        return var_export($value, true);
+    }
+
+    protected static function invalid(OutputInterface $output, string $message): int
+    {
+        $output->writeln(sprintf('<error>%s</error>', $message));
+
+        return Command::FAILURE;
+    }
+
     protected function write(InputInterface $input, OutputInterface $output, string $subdirectory, string $class, string $source): int
     {
+        if (!self::isClassName($class)) {
+            return self::invalid($output, sprintf('"%s" is not a valid class name', $class));
+        }
         [, $srcDir] = $this->rootNamespace();
         $directory = $subdirectory === '' ? $srcDir : $srcDir . '/' . $subdirectory;
         $path = $directory . '/' . $class . '.php';

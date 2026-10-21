@@ -6,12 +6,16 @@ namespace Keel\OpenApi;
 
 /**
  * Reads the array element types a signature cannot carry: "@param list<Item> $items" and
- * "@return list<User>". Class names are resolved against the declaring namespace.
+ * "@return list<User>". Class names are resolved like PHP does: fully qualified names as is,
+ * then through the "use" imports of the declaring file, then against the declaring namespace.
  *
  * @internal
  */
 final class DocTypes
 {
+    /** @var array<string, array<string, string>> file => alias (lowercased) => class */
+    private static array $imports = [];
+
     /**
      * Element type of an array-typed parameter: a class name, a scalar type name, or null.
      */
@@ -64,17 +68,90 @@ final class DocTypes
     private static function resolveClass(string $name, \ReflectionFunctionAbstract $function): ?string
     {
         if (str_starts_with($name, '\\')) {
-            $name = substr($name, 1);
-
-            return class_exists($name) || enum_exists($name) ? $name : null;
+            return self::existing(substr($name, 1));
         }
-        if (class_exists($name) || enum_exists($name)) {
-            return $name;
+
+        $file = $function->getFileName();
+        if ($file !== false) {
+            $segments = explode('\\', $name, 2);
+            $imported = self::imports($file)[strtolower($segments[0])] ?? null;
+            if ($imported !== null) {
+                $candidate = self::existing(isset($segments[1]) ? $imported . '\\' . $segments[1] : $imported);
+                if ($candidate !== null) {
+                    return $candidate;
+                }
+            }
         }
 
         $namespace = $function instanceof \ReflectionMethod ? $function->getDeclaringClass()->getNamespaceName() : $function->getNamespaceName();
-        $candidate = $namespace === '' ? $name : $namespace . '\\' . $name;
 
-        return class_exists($candidate) || enum_exists($candidate) ? $candidate : null;
+        return self::existing($namespace === '' ? $name : $namespace . '\\' . $name) ?? self::existing($name);
+    }
+
+    private static function existing(string $class): ?string
+    {
+        return class_exists($class) || enum_exists($class) ? $class : null;
+    }
+
+    /**
+     * Class imports of a file: "use Foo\Bar;", "use Foo\Bar as Baz;" and "use Foo\{Bar, Baz as Q};".
+     * Function and constant imports are skipped. Files with several namespaces share one map.
+     *
+     * @return array<string, string> lowercased alias => fully qualified class
+     */
+    private static function imports(string $file): array
+    {
+        if (isset(self::$imports[$file])) {
+            return self::$imports[$file];
+        }
+
+        $imports = [];
+        $source = @file_get_contents($file);
+        if ($source !== false && preg_match_all('/^\s*use\s+(?!function\s|const\s)([^;]+);/mi', $source, $matches) > 0) {
+            foreach ($matches[1] as $clause) {
+                foreach (self::expand(trim($clause)) as $alias => $class) {
+                    $imports[strtolower($alias)] = $class;
+                }
+            }
+        }
+
+        return self::$imports[$file] = $imports;
+    }
+
+    /**
+     * @return array<string, string> alias => class
+     */
+    private static function expand(string $clause): array
+    {
+        $pairs = [];
+        if (preg_match('/^([^{]+)\{(.*)\}$/s', $clause, $m) === 1) {
+            $prefix = trim($m[1], " \t\n\\");
+            foreach (explode(',', $m[2]) as $member) {
+                $pairs += self::pair($prefix . '\\' . trim($member));
+            }
+
+            return $pairs;
+        }
+        foreach (explode(',', $clause) as $member) {
+            $pairs += self::pair(trim($member));
+        }
+
+        return $pairs;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function pair(string $import): array
+    {
+        $import = ltrim(trim($import), '\\');
+        if ($import === '' || preg_match('/^(?:function|const)\s/i', $import) === 1) {
+            return [];
+        }
+        $parts = preg_split('/\s+as\s+/i', $import) ?: [$import];
+        $class = trim($parts[0]);
+        $alias = isset($parts[1]) ? trim($parts[1]) : substr($class, (int) strrpos('\\' . $class, '\\'));
+
+        return $class === '' || $alias === '' ? [] : [$alias => $class];
     }
 }

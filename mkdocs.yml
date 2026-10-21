@@ -44,10 +44,7 @@ plugins:
           build: true
           nav_translations:
             Overview: Обзор
-            Design: Проектирование
             Components: Компоненты
-            Landscape analysis: Анализ рынка
-            Design decisions: Проектные решения
             Container: Контейнер
             Routing: Роутинг
             HTTP and kernel: HTTP и ядро
@@ -67,10 +64,7 @@ plugins:
             HTTP client: HTTP-клиент
 nav:
   - Overview: index.md
-  - Design:
-      - Landscape analysis: analysis.md
-      - Design decisions: design.md
-      - API stability: api.md
+  - API stability: api.md
   - Components:
       - Container: container.md
       - Routing: routing.md

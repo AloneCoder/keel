@@ -9,7 +9,6 @@ composer create-project keel/skeleton my-app
 cd my-app && composer serve
 ```
 
-- [Design decisions](design.md) explain why the framework looks the way it does.
 - [Container](container.md), [Routing](routing.md), [HTTP and kernel](http.md), [Runtimes](runtime.md),
   [Application](app.md), [Sessions](session.md), [Testing](testing.md) cover each component.
 - [Authentication and rate limiting](auth.md), [OpenAPI](openapi.md), [Health and metrics](observability.md)

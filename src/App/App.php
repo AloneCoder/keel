@@ -9,6 +9,7 @@ use Keel\Config\ConfigLoader;
 use Keel\Config\Env;
 use Keel\Config\HttpConfig;
 use Keel\Container\Compiled\AbstractCompiledContainer;
+use Keel\Container\Compiler;
 use Keel\Container\ContainerInterface;
 use Keel\Container\Definitions;
 use Keel\Discovery\CommandDiscovery;
@@ -143,11 +144,20 @@ final class App
         $cache = $cacheDir . '/container.php';
         $className = self::compiledClassName($config);
         $fqcn = self::COMPILED_NAMESPACE . '\\' . $className;
-        if (!class_exists($fqcn, false)) {
+        $loaded = class_exists($fqcn, false);
+        if (!$loaded) {
             require $cache;
         }
         if (!is_a($fqcn, AbstractCompiledContainer::class, true)) {
             throw new \RuntimeException(sprintf('Compiled container "%s" is not a %s', $cache, AbstractCompiledContainer::class));
+        }
+        // PHP cannot reload a class: a cache rewritten after the first boot of this process
+        // (keel:compile, App::compile()) would be silently ignored, so refuse instead.
+        if ($loaded && $fqcn::CONTENT_HASH !== Compiler::contentHash((string) @file_get_contents($cache))) {
+            throw new \RuntimeException(sprintf(
+                'Compiled container "%s" was rewritten after its class was loaded in this process; start a new process to use it',
+                $cache,
+            ));
         }
 
         return new $fqcn($instances);

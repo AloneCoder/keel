@@ -21,8 +21,13 @@ final class BearerTokenAuthenticator implements Authenticator
     public function authenticate(ServerRequestInterface $request): ?Principal
     {
         $header = $request->getHeaderLine('Authorization');
-        if (preg_match('/^Bearer\s+(\S+)\s*$/i', $header, $matches) !== 1) {
+        if (preg_match('/^Bearer(?:\s|$)/i', $header) !== 1) {
             return null;
+        }
+
+        // The scheme is present: an empty token or several tokens are bad credentials, not anonymity.
+        if (preg_match('/^Bearer\s+(\S+)\s*$/i', $header, $matches) !== 1) {
+            throw new UnauthorizedException('Malformed bearer token', ['WWW-Authenticate' => $this->challenge() . ', error="invalid_request"']);
         }
 
         $principal = $this->tokens->resolve($matches[1]);

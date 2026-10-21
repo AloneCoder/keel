@@ -25,6 +25,9 @@ final class DispatchHandler implements RequestHandlerInterface
     /** @var array<string, \ReflectionMethod> */
     private array $methods = [];
 
+    /** @var array<string, RequestHandlerInterface> route middleware pipelines, built once per handler + middleware list */
+    private array $pipelines = [];
+
     public function __construct(
         private readonly ContainerInterface $container,
         private readonly Responder $responder,
@@ -33,18 +36,28 @@ final class DispatchHandler implements RequestHandlerInterface
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
+        $match = self::matchOf($request);
+        if ($match->route->middleware === []) {
+            return $this->invoke($request, $match);
+        }
+
+        $key = implode('::', $match->route->handler) . '|' . implode(',', $match->route->middleware);
+
+        return ($this->pipelines[$key] ??= new Pipeline(
+            $match->route->middleware,
+            new CallableHandler(fn(ServerRequestInterface $request): ResponseInterface => $this->invoke($request, self::matchOf($request))),
+            $this->container,
+        ))->handle($request);
+    }
+
+    private static function matchOf(ServerRequestInterface $request): RouteMatch
+    {
         $match = $request->getAttribute(RouteMatch::class);
         if (!$match instanceof RouteMatch) {
             throw new \LogicException('DispatchHandler needs a RouteMatch attribute; is RoutingMiddleware in the pipeline?');
         }
 
-        $controller = new CallableHandler(fn(ServerRequestInterface $request): ResponseInterface => $this->invoke($request, $match));
-
-        if ($match->route->middleware === []) {
-            return $controller->handle($request);
-        }
-
-        return new Pipeline($match->route->middleware, $controller, $this->container)->handle($request);
+        return $match;
     }
 
     private function invoke(ServerRequestInterface $request, RouteMatch $match): ResponseInterface

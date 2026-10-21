@@ -77,6 +77,9 @@ final class ConsoleTest extends TestCase
         self::assertStringContainsString('psr7-server/src/ServerRequestCreator.php', $source);
         self::assertStringNotContainsString('symfony/console', $source);
         self::assertStringNotContainsString('/tests/', $source);
+        self::assertStringNotContainsString('src/Console/', $source, "Keel's console classes are not needed by requests");
+        self::assertStringNotContainsString($this->cacheDir, $source, 'compiled caches change with keel:compile');
+        self::assertStringNotContainsString('/config/', $source, 'config files run at load time');
 
         exec(sprintf('%s -l %s 2>&1', escapeshellarg(\PHP_BINARY), escapeshellarg($path)), $lint, $code);
         self::assertSame(0, $code, implode("\n", $lint));

@@ -3,6 +3,11 @@
 Namespaces `Keel\Health` and `Keel\Metrics`. Both are global middleware that answer their own
 paths before routing and need no controller.
 
+Because they answer before routing, `/health`, `/metrics` (and `/openapi.json`, `/docs` from
+[OpenAPI](openapi.md)) cannot be protected by `#[Auth]` and shadow any application route on the
+same path. Keep them off the public internet: restrict them in the reverse proxy or firewall, or
+change the paths in the configs.
+
 ## Health checks
 
 ```php
@@ -19,7 +24,7 @@ final class DatabaseCheck implements HealthCheck
         try {
             $this->pdo->query('SELECT 1');
         } catch (\PDOException $e) {
-            return HealthResult::down($e->getMessage());
+            return HealthResult::down($e->getMessage(), exception: $e);
         }
         $ms = (hrtime(true) - $started) / 1e6;
 
@@ -32,9 +37,20 @@ Tagged `keel.health`, the class is registered by discovery and injected into `He
 (`HttpConfig`). Two endpoints, paths in `HealthConfig` (`config/health.php`), `null` disables:
 
 - `/health` (readiness): runs every check, answers `{"status": "up"|"degraded"|"down", "checks": {...}}`
-  with 200, or 503 when any check is down. A check that throws is reported as down with the
-  exception message. `Cache-Control: no-store`.
+  with 200, or 503 when any check is down. A check that throws is reported as down.
+  `Cache-Control: no-store`.
 - `/health/live` (liveness): `{"status": "up"}` without running anything, as long as the worker answers.
+
+Exception messages stay out of the report: a thrown exception, or a `HealthResult::down()` given
+its `exception`, shows `"detail": "check failed"` and the exception is logged through the
+`LoggerInterface` when one is registered. Connection errors name hosts, users and paths, and the
+endpoint is usually reachable without credentials. `new HealthConfig(exposeDetails: true)` puts
+the messages back, for development. Details you write yourself (`down('queue lag 5s')`) are
+always shown.
+
+Checks receive their dependencies from the container when the middleware is built, so take a
+connection lazily (a closure, or the container) if opening it can fail: `PdoCheck` does, which is
+why an unreachable database is a `down` entry in the report rather than a 500 for every request.
 
 Point Kubernetes probes, load balancers and uptime monitors at them; keep readiness checks cheap,
 they run on every probe.
@@ -52,9 +68,13 @@ http_request_duration_seconds_sum{method="GET",route="/users/{id}"} 0.3123
 ```
 
 The `route` label is the route pattern, so cardinality stays bounded; requests matching no route
-are labelled `unmatched`. Because the middleware runs before routing, the pattern comes from a
-second match against the compiled tables, a hash lookup for static routes. Latency buckets are
-configurable (`MetricsConfig::$buckets`, seconds).
+are labelled `unmatched`. The `method` label is one of `GET HEAD POST PUT PATCH DELETE OPTIONS`
+(`MetricsMiddleware::METHODS`); any other method is recorded as `OTHER`, so a client cannot grow
+the label set by inventing verbs. Because the middleware runs before routing, the pattern comes
+from a second match against the compiled tables, a hash lookup for static routes. Latency buckets
+are configurable (`MetricsConfig::$buckets`, seconds); the exposition lists every configured
+bucket in ascending order, with `0` for buckets nothing has reached yet, then `+Inf`, `_count`
+and `_sum`.
 
 ### Your own metrics
 
@@ -86,8 +106,9 @@ metric is registered, `render()` returns the exposition.
 Samples live in a `MetricsStorage`: APCu when the extension is loaded, so every php-fpm child or
 FrankenPHP thread of a server adds to the same numbers, otherwise the memory of the current
 process (one worker's view). Values are integers internally; gauges and histogram sums are scaled
-by 10⁶, which keeps APCu's atomic increments usable for durations. Register an implementation
-under `MetricsStorage` for anything else.
+by 10⁶, which keeps APCu's atomic increments usable for durations and caps a single gauge or sum
+at about ±9.2·10¹² (larger values are clamped). Register an implementation under
+`MetricsStorage` for anything else.
 
 ## Request ids and logs
 

@@ -98,6 +98,14 @@ final class ArgumentResolver
             } elseif ($parameter->getAttributes(FromQuery::class) !== []) {
                 $source = self::QUERY;
             } elseif ($parameter->getAttributes(FromBody::class) !== []) {
+                if ($type instanceof \ReflectionNamedType && $type->isBuiltin() && !in_array($type->getName(), ['array', 'iterable', 'mixed'], true)) {
+                    throw new \LogicException(sprintf(
+                        'Parameter $%s of %s: #[FromBody] needs a DTO class or an array, %s cannot hold a request body',
+                        $parameter->getName(),
+                        self::describe($handler),
+                        $type->getName(),
+                    ));
+                }
                 $source = self::BODY;
             }
 

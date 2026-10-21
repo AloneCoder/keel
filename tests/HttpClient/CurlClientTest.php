@@ -127,6 +127,7 @@ final class CurlClientTest extends TestCase
         self::assertSame('nope', (string) $response->getBody());
         self::assertSame('yes', $response->getHeaderLine('X-Custom'));
         self::assertSame(['a', 'b'], $response->getHeader('X-Multi'));
+        self::assertSame(['a=1', 'b=2'], $response->getHeader('Set-Cookie'), 'header names differing in case are one header');
 
         $head = $this->client()->sendRequest(new Request('HEAD', self::$base . '/status?code=404'));
         self::assertSame(404, $head->getStatusCode());
@@ -142,6 +143,73 @@ final class CurlClientTest extends TestCase
         $stopped = $this->client(new HttpClientConfig(maxRedirects: 0))->sendRequest(new Request('GET', self::$base . '/redirect'));
         self::assertSame(302, $stopped->getStatusCode());
         self::assertSame('/echo?from=redirect', $stopped->getHeaderLine('Location'));
+
+        $limited = $this->client(new HttpClientConfig(maxRedirects: 3))->sendRequest(new Request('GET', self::$base . '/loop'));
+        self::assertSame(302, $limited->getStatusCode(), 'the last redirect is returned once the limit is reached');
+    }
+
+    public function testRedirectsChangeTheMethodAndDropCredentialsLikeABrowser(): void
+    {
+        $headers = ['Authorization' => 'Bearer secret', 'Cookie' => 'sid=1', 'X-Api-Key' => 'k', 'Content-Type' => 'text/plain'];
+
+        $seeOther = self::echoed((string) $this->client()->sendRequest(new Request('POST', self::$base . '/redirect?to=/echo%3Fhop%3D1&code=303', $headers, 'payload'))->getBody());
+        self::assertSame('GET', $seeOther['method'], '303 turns a POST into a GET');
+        self::assertSame('', $seeOther['body']);
+        self::assertSame(['hop' => '1'], $seeOther['query']);
+        self::assertIsArray($seeOther['headers']);
+        self::assertArrayNotHasKey('content-type', $seeOther['headers']);
+        self::assertSame('Bearer secret', $seeOther['headers']['authorization'], 'same origin keeps the credentials');
+        self::assertSame('sid=1', $seeOther['headers']['cookie']);
+
+        $found = self::echoed((string) $this->client()->sendRequest(new Request('POST', self::$base . '/redirect?to=/echo&code=302', $headers, 'payload'))->getBody());
+        self::assertSame('GET', $found['method'], '302 after a POST is a GET as well');
+
+        $repeated = self::echoed((string) $this->client()->sendRequest(new Request('POST', self::$base . '/redirect?to=/echo&code=307', $headers, 'payload'))->getBody());
+        self::assertSame('POST', $repeated['method'], '307 repeats the request');
+        self::assertSame('payload', $repeated['body']);
+        self::assertSame('text/plain', $repeated['content_type']);
+
+        $relative = self::echoed((string) $this->client()->sendRequest(new Request('GET', self::$base . '/redirect?to=../echo%3Fr%3D1'))->getBody());
+        self::assertSame('/echo', $relative['path'], 'relative Location is resolved against the request URI');
+        self::assertSame(['r' => '1'], $relative['query']);
+
+        $other = 'http://localhost:' . (string) parse_url(self::$base, \PHP_URL_PORT) . '/echo';
+        $crossOrigin = self::echoed((string) $this->client()->sendRequest(new Request('GET', self::$base . '/redirect?to=' . rawurlencode($other), $headers))->getBody());
+        self::assertIsArray($crossOrigin['headers']);
+        self::assertArrayNotHasKey('authorization', $crossOrigin['headers'], 'Authorization is not sent to another origin');
+        self::assertArrayNotHasKey('cookie', $crossOrigin['headers']);
+        self::assertSame('k', $crossOrigin['headers']['x-api-key'], 'other headers travel with the request');
+
+        $ftp = $this->client()->sendRequest(new Request('GET', self::$base . '/redirect?to=' . rawurlencode('ftp://example.test/file')));
+        self::assertSame(302, $ftp->getStatusCode(), 'only http(s) targets are followed');
+    }
+
+    public function testResponseHeaderParsingJoinsFoldedLinesAndRejectsMalformedHeaders(): void
+    {
+        $client = $this->client();
+        $parse = new \ReflectionMethod($client, 'response');
+        $request = new Request('GET', 'http://example.test/');
+
+        $response = $parse->invoke($client, [
+            "HTTP/1.1 100 Continue\r\n",
+            "\r\n",
+            "HTTP/1.1 201 Created\r\n",
+            "X-Long: first part\r\n",
+            "  second part\r\n",
+            "Set-Cookie: a=1\r\n",
+            "SET-COOKIE: b=2\r\n",
+            "garbage without colon\r\n",
+            "\r\n",
+        ], 'body', $request);
+        self::assertInstanceOf(\Psr\Http\Message\ResponseInterface::class, $response);
+        self::assertSame(201, $response->getStatusCode());
+        self::assertSame('Created', $response->getReasonPhrase());
+        self::assertSame('first part second part', $response->getHeaderLine('X-Long'));
+        self::assertSame(['a=1', 'b=2'], $response->getHeader('set-cookie'));
+        self::assertSame('body', (string) $response->getBody());
+
+        $this->expectException(RequestException::class);
+        $parse->invoke($client, ["HTTP/1.1 200 OK\r\n", "Bad\x01Name: v\r\n"], '', $request);
     }
 
     public function testTimeoutAndConnectionFailuresAreNetworkExceptions(): void

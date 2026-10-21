@@ -74,6 +74,46 @@ final class DefinitionsTest extends TestCase
         $definitions->resolveAlias('a');
     }
 
+    public function testAliasCannotTakeADefinitionId(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set('svc', Logger::class);
+
+        $this->expectException(ContainerException::class);
+        $this->expectExceptionMessage('"svc" is both an alias and a definition id');
+        $definitions->alias('svc', Clock::class);
+    }
+
+    public function testDefinitionCannotTakeAnAliasId(): void
+    {
+        $definitions = new Definitions();
+        $definitions->alias(Clock::class, SystemClock::class);
+
+        $this->expectException(ContainerException::class);
+        $this->expectExceptionMessage(sprintf('"%s" is both an alias and a definition id', Clock::class));
+        $definitions->set(Clock::class, SystemClock::class);
+    }
+
+    public function testDeclaredAliasCollidingWithADefinitionIsReportedByAliases(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set(Clock::class, HeavyService::class);
+        $definitions->set(SystemClock::class); // #[Alias(Clock::class)]
+
+        $this->expectException(ContainerException::class);
+        $this->expectExceptionMessage(sprintf('"%s" is both an alias and a definition id', Clock::class));
+        $definitions->aliases();
+    }
+
+    public function testSelfAliasFromAttributeIsIgnored(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set(Clock::class, SystemClock::class); // #[Alias(Clock::class)] points at its own id
+
+        self::assertSame([], $definitions->aliases());
+        self::assertSame(Clock::class, $definitions->resolveAlias(Clock::class));
+    }
+
     public function testProvidersAreLoadedInOrder(): void
     {
         $definitions = new Definitions();

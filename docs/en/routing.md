@@ -28,7 +28,7 @@ final class UserController
 - `#[Get]`, `#[Post]`, `#[Put]`, `#[Patch]`, `#[Delete]` are shortcuts for `#[Route]` with one
   method. The attributes are repeatable: one method can serve several paths.
 - `#[Prefix]` on the class is prepended to every path in the class. An empty method path `''`
-  yields exactly the prefix.
+  or `'/'` yields exactly the prefix (`/api`, not `/api/`).
 - `#[Middleware]` on the class applies to every route of the class and runs before the
   method-level middleware.
 - `#[Status]` sets the status of the response that `Responder` builds from the return value.
@@ -49,7 +49,11 @@ reads them from the `RouteMatch` request attribute.
 
 - `{name}` matches one segment without `/` (`[^/]+`).
 - `{name:regex}` uses a custom pattern, e.g. `{id:\d+}`, `{year:\d{4}}`, `{lang:(ru|en)}`.
-  Capturing groups inside are turned into non-capturing ones.
+  Plain capturing groups inside are turned into non-capturing ones (`\(` and `[(]` stay literal);
+  a named group such as `(?<n>...)` cannot be neutralised and is rejected with `RoutingException`.
+- The pattern is matched against the **percent-encoded** path (see Matching): `\d+` and
+  `[a-z-]+` work, `\p{L}` or any other non-ASCII constraint never matches an encoded `%C3%B6`.
+  For non-ASCII values keep the default `[^/]+` and validate the decoded value in the handler.
 - A path starts with `/`. The trailing slash is part of the path: `/users` and `/users/` are
   different routes.
 - There are no optional segments: declare two routes on the same method.
@@ -62,9 +66,17 @@ as in FastRoute). Matching runs against the **raw** request path, without decodi
 `%2F` cannot change the structure; placeholder values are decoded individually with
 `rawurldecode`. A `\d+` constraint is checked before decoding, so `/users/%34%32` does not match.
 
+A static path always wins over a dynamic one. Among the dynamic routes of a method the **first
+declared** route that matches wins, so when two patterns overlap (`/items/{id:\d+}` and
+`/items/{slug}` both match `/items/42`) declare the more specific one first. Declaration order is
+the order of the attributed methods in a controller, of the controllers passed to
+`fromControllers()`, or of the list given to `fromRoutes()`; the route cache keeps it.
+
 `Router::match($method, $path)` returns a `MatchResult` with status `Found` (a `RouteMatch`
 holding the route and the parameters), `NotFound` or `MethodNotAllowed` with the `allowed`
-list. `HEAD` without a route of its own is served by the `GET` route.
+list. `HEAD` without a route of its own is served by the `GET` route, and `allowed` (the `Allow`
+header of a 405) lists `HEAD` whenever it lists `GET`. An empty request path (PSR-7 allows it for
+`http://host`) is routed as `/`.
 
 ## Cache
 
@@ -84,11 +96,15 @@ $router->generate('users.show', ['id' => 5, 'page' => 2]);      // /api/users/5?
 ```
 
 Extra parameters become the query string, `null` values are skipped, values are encoded with
-`rawurlencode`. A missing parameter, a pattern violation and an unknown name raise
-`RoutingException`.
+`rawurlencode`. Each value is checked against its placeholder constraint, either as given (with
+`/u`, so `{slug:[\p{L}-]+}` accepts `wörld`) or in its encoded form (`a/b` satisfies `[^/]+` as
+`a%2Fb`, exactly as the matcher will see it). A missing parameter, a pattern violation and an
+unknown name raise `RoutingException`.
 
 ## Configuration errors
 
 `Keel\Routing\Exception\RoutingException` (a `LogicException`): a path without a leading `/`,
-a placeholder name used twice, an invalid pattern, a route name declared twice, a static path
-declared twice for the same method, a static or abstract handler.
+a placeholder name used twice, an invalid pattern or one with a capturing group that cannot be
+neutralised, a route name declared twice, a static path or a dynamic pattern declared twice for
+the same method (`/u/{id}` and `/u/{slug}` compile to the same regex), a static or abstract
+handler.

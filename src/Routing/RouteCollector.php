@@ -132,9 +132,14 @@ final class RouteCollector
         return $options;
     }
 
+    /**
+     * "/api" + "/{id}" => "/api/{id}"; "" or "/" as the method path yields exactly the prefix
+     * ("/api", not "/api/"): a trailing slash is significant, so it is never added by accident.
+     */
     private static function joinPath(string $prefix, string $path): string
     {
-        $joined = $prefix . ($path === '' ? '' : '/' . ltrim($path, '/'));
+        $suffix = ltrim($path, '/');
+        $joined = $prefix . ($suffix === '' ? '' : '/' . $suffix);
 
         return $joined === '' ? '/' : $joined;
     }

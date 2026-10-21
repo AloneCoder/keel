@@ -61,6 +61,11 @@ final class CacheTest extends TestCase
         self::assertSame(['m1' => 1, 'm2' => 2, 'm3' => 0], $cache->getMultiple(['m1', 'm2', 'm3'], 0));
         self::assertTrue($cache->deleteMultiple(['m1', 'nope']));
         self::assertFalse($cache->has('m1'));
+        self::assertTrue($cache->setMultiple(['42' => 'answer']), 'numeric-string keys (ints to PHP) are valid PSR-16 keys');
+        self::assertSame('answer', $cache->get('42'));
+        self::assertSame([42 => 'answer'], $cache->getMultiple(['42']));
+        self::assertTrue($cache->deleteMultiple(['42']));
+        self::assertFalse($cache->has('42'));
         self::assertTrue($cache->delete('m2'));
         self::assertTrue($cache->clear());
         self::assertFalse($cache->has('a'));
@@ -91,6 +96,64 @@ final class CacheTest extends TestCase
         self::assertSame([], glob($directory . '/*.cache') ?: []);
 
         self::assertSame('v', $array->get('soon'), 'default TTL of one second still valid');
+    }
+
+    public function testFileCacheRefusesDirectoriesOthersCanWriteTo(): void
+    {
+        $base = sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/cache-' . uniqid();
+        mkdir($base, 0o700, true);
+
+        $cache = new FileCache($base . '/fresh');
+        self::assertTrue($cache->set('k', 'v'));
+        self::assertSame(0o700, fileperms($base . '/fresh') & 0o777, 'a created directory is private to the user');
+
+        $open = $base . '/open';
+        mkdir($open, 0o777);
+        chmod($open, 0o777);
+        if ((fileperms($open) & 0o002) === 0) {
+            self::markTestSkipped('filesystem does not keep world-writable mode bits');
+        }
+        try {
+            new FileCache($open)->set('k', 'v');
+            self::fail('a world-writable directory is refused');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('writable by everyone', $e->getMessage());
+        }
+        $planted = new FileCache($open);
+        file_put_contents($open . '/' . hash('xxh128', 'k') . '.cache', serialize(['planted', null]));
+        try {
+            $planted->get('k');
+            self::fail('reads from a world-writable directory are refused too');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('writable by everyone', $e->getMessage());
+        }
+
+        symlink($base . '/fresh', $base . '/link');
+        try {
+            new FileCache($base . '/link')->set('k', 'v');
+            self::fail('a symlinked directory is refused');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('symlink', $e->getMessage());
+        }
+    }
+
+    public function testFileCacheSweepsStaleTemporaryFiles(): void
+    {
+        $directory = sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/cache-' . uniqid();
+        $cache = new FileCache($directory, gcDivisor: 0);
+        $cache->set('a', 1);
+
+        file_put_contents($directory . '/stale.tmp', 'x');
+        touch($directory . '/stale.tmp', time() - 120);
+        file_put_contents($directory . '/recent.tmp', 'x');
+
+        $cache->sweep();
+        self::assertFileDoesNotExist($directory . '/stale.tmp', 'leftovers of a crashed write are removed');
+        self::assertFileExists($directory . '/recent.tmp', 'a write in progress is left alone');
+        self::assertSame(1, $cache->get('a'));
+
+        self::assertTrue($cache->clear());
+        self::assertSame([], glob($directory . '/*') ?: []);
     }
 
     public function testProviderPicksTheDriver(): void

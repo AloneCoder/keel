@@ -21,12 +21,15 @@ final class ApcuCounters implements CounterStorage
         return function_exists('apcu_enabled') && apcu_enabled();
     }
 
+    /**
+     * Fails closed: when APCu cannot store the counter (shared memory full, entry evicted) the
+     * result is PHP_INT_MAX, so the limit reads as exhausted instead of silently disabled.
+     */
     public function increment(string $key, int $ttl): int
     {
-        $key = $this->prefix . $key;
-        apcu_add($key, 0, $ttl);
-        $value = apcu_inc($key);
+        $success = false;
+        $value = apcu_inc($this->prefix . $key, 1, $success, $ttl);
 
-        return is_int($value) ? $value : 1;
+        return $success && is_int($value) ? $value : \PHP_INT_MAX;
     }
 }

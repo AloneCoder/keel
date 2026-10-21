@@ -15,13 +15,23 @@ use Keel\Routing\Exception\RoutingException;
  */
 final class RouteCompiler
 {
+    /** @var int<1, max> */
+    private readonly int $chunkSize;
+
     /**
-     * @param int<1, max> $chunkSize routes per alternation regex
+     * @param int $chunkSize routes per alternation regex
+     *
+     * @throws \InvalidArgumentException when $chunkSize is below 1
      */
     public function __construct(
         private readonly PathParser $parser = new PathParser(),
-        private readonly int $chunkSize = 10,
-    ) {}
+        int $chunkSize = 10,
+    ) {
+        if ($chunkSize < 1) {
+            throw new \InvalidArgumentException(sprintf('Route compiler chunk size must be at least 1, got %d', $chunkSize));
+        }
+        $this->chunkSize = $chunkSize;
+    }
 
     /**
      * @param list<Route> $routes
@@ -32,6 +42,8 @@ final class RouteCompiler
         $names = [];
         /** @var array<string, list<array{0: int, 1: string, 2: list<string>}>> $dynamic */
         $dynamic = [];
+        /** @var array<string, array<string, true>> $seenDynamic method => regex => true */
+        $seenDynamic = [];
 
         foreach ($routes as $index => $route) {
             $parsed = $this->parser->parse($route->path);
@@ -50,6 +62,10 @@ final class RouteCompiler
                     }
                     $static[$method][$route->path] = $index;
                 } else {
+                    if (isset($seenDynamic[$method][$parsed['regex']])) {
+                        throw new RoutingException(sprintf('Dynamic route %s %s is declared twice (same pattern as an earlier route)', $method, $route->path));
+                    }
+                    $seenDynamic[$method][$parsed['regex']] = true;
                     $dynamic[$method][] = [$index, $parsed['regex'], $parsed['variables']];
                 }
             }

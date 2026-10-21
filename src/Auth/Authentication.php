@@ -51,18 +51,22 @@ final class Authentication
     /** @return list<Authenticator> */
     public function authenticators(): array
     {
-        if ($this->authenticators === null) {
-            $this->authenticators = [];
-            foreach ($this->config->authenticators ?? [] as $class) {
-                $authenticator = $this->container->get($class);
-                if (!$authenticator instanceof Authenticator) {
-                    throw new \LogicException(sprintf('Service "%s" is not a %s', $class, Authenticator::class));
-                }
-                $this->authenticators[] = $authenticator;
-            }
+        if ($this->authenticators !== null) {
+            return $this->authenticators;
         }
 
-        return $this->authenticators;
+        // Built locally and assigned at the end: a failing lookup must not leave a partial list
+        // cached for the rest of a worker's life.
+        $authenticators = [];
+        foreach ($this->config->authenticators ?? [] as $class) {
+            $authenticator = $this->container->get($class);
+            if (!$authenticator instanceof Authenticator) {
+                throw new \LogicException(sprintf('Service "%s" is not a %s', $class, Authenticator::class));
+            }
+            $authenticators[] = $authenticator;
+        }
+
+        return $this->authenticators = $authenticators;
     }
 
     public static function attach(ServerRequestInterface $request, Principal $principal): ServerRequestInterface

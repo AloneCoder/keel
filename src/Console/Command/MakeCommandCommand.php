@@ -22,7 +22,14 @@ final class MakeCommandCommand extends MakeCommandBase
     {
         $name = $input->getArgument('name');
         $name = is_string($name) && $name !== '' ? $name : 'app:task';
-        $class = self::studly((string) preg_replace('/^[^:]+:/', '', $name)) . 'Command';
+        $short = self::studly((string) preg_replace('/^[^:]+:/', '', $name));
+        if ($short === '' || !self::isClassName($short)) {
+            return self::invalid($output, sprintf('"%s" does not yield a class name; use letters, e.g. app:import-users', $name));
+        }
+        $class = $short . 'Command';
+        $literal = self::literal($name);
+        $description = self::literal(sprintf('Describe what %s does', $name));
+        $message = self::literal($name . ': not implemented yet');
         [$namespace] = $this->rootNamespace();
 
         $source = <<<PHP
@@ -37,12 +44,12 @@ final class MakeCommandCommand extends MakeCommandBase
             use Symfony\\Component\\Console\\Input\\InputInterface;
             use Symfony\\Component\\Console\\Output\\OutputInterface;
 
-            #[AsCommand(name: '{$name}', description: 'Describe what {$name} does')]
+            #[AsCommand(name: {$literal}, description: {$description})]
             final class {$class} extends Command
             {
                 protected function execute(InputInterface \$input, OutputInterface \$output): int
                 {
-                    \$output->writeln('{$name}: not implemented yet');
+                    \$output->writeln({$message});
 
                     return Command::SUCCESS;
                 }

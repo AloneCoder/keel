@@ -25,11 +25,14 @@ final class RoutingMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $result = $this->router->match($request->getMethod(), $request->getUri()->getPath());
+        // PSR-7 allows an empty path for "http://host"; for routing that is the root.
+        $path = $request->getUri()->getPath();
+        $path = $path === '' ? '/' : $path;
+        $result = $this->router->match($request->getMethod(), $path);
 
         return match ($result->status) {
             MatchStatus::Found => $handler->handle($request->withAttribute(RouteMatch::class, $result->match)),
-            MatchStatus::NotFound => throw new NotFoundException(sprintf('No route for %s %s', $request->getMethod(), $request->getUri()->getPath())),
+            MatchStatus::NotFound => throw new NotFoundException(sprintf('No route for %s %s', $request->getMethod(), $path)),
             MatchStatus::MethodNotAllowed => throw new MethodNotAllowedException($result->allowed),
         };
     }

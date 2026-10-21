@@ -43,6 +43,10 @@ final class Definitions
      */
     public function set(string $id, ?string $class = null): Definition
     {
+        if (isset($this->aliases[$id])) {
+            throw self::collision($id);
+        }
+
         $definition = new Definition($id, $class);
         if (class_exists($definition->class)) {
             ClassAttributes::apply(new \ReflectionClass($definition->class), $definition);
@@ -74,8 +78,15 @@ final class Definitions
         return $this;
     }
 
+    /**
+     * @throws ContainerException when $alias is already the id of a definition
+     */
     public function alias(string $alias, string $target): self
     {
+        if (isset($this->definitions[$alias])) {
+            throw self::collision($alias);
+        }
+
         $this->aliases[$alias] = $target;
 
         return $this;
@@ -110,7 +121,11 @@ final class Definitions
     }
 
     /**
-     * Explicit aliases merged with aliases declared on definitions. Later registrations win.
+     * Explicit aliases merged with aliases declared on definitions (explicit ones win; among
+     * declared ones, later registrations win).
+     *
+     * @throws ContainerException when an alias has the same id as a definition: the alias would
+     *                            shadow the definition silently
      *
      * @return array<string, string>
      */
@@ -119,11 +134,21 @@ final class Definitions
         $aliases = [];
         foreach ($this->definitions as $definition) {
             foreach ($definition->aliases as $alias) {
-                $aliases[$alias] = $definition->id;
+                // set(Iface::class, Impl::class) with #[Alias(Iface::class)] on Impl: nothing to alias.
+                if ($alias !== $definition->id) {
+                    $aliases[$alias] = $definition->id;
+                }
             }
         }
 
-        return $this->aliases + $aliases;
+        $aliases = $this->aliases + $aliases;
+        foreach ($aliases as $alias => $target) {
+            if (isset($this->definitions[$alias])) {
+                throw self::collision($alias);
+            }
+        }
+
+        return $aliases;
     }
 
     /**
@@ -159,6 +184,15 @@ final class Definitions
         }
 
         return $ids;
+    }
+
+    private static function collision(string $id): ContainerException
+    {
+        return new ContainerException(sprintf(
+            '"%s" is both an alias and a definition id; register the implementation under its own id and alias "%s" to it',
+            $id,
+            $id,
+        ));
     }
 
     /**

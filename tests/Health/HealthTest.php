@@ -17,6 +17,8 @@ use Keel\Tests\Health\Fixtures\QueueCheck;
 use Keel\Tests\Health\Fixtures\StatusController;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
 
 #[CoversClass(HealthMiddleware::class)]
 #[CoversClass(HealthResult::class)]
@@ -27,7 +29,7 @@ final class HealthTest extends TestCase
     /**
      * @param list<class-string<HealthCheck>> $checks
      */
-    private function client(array $checks, ?HealthConfig $config = null): TestClient
+    private function client(array $checks, ?HealthConfig $config = null, ?LoggerInterface $logger = null): TestClient
     {
         $definitions = new Definitions();
         foreach ($checks as $check) {
@@ -35,6 +37,9 @@ final class HealthTest extends TestCase
         }
         if ($config !== null) {
             $definitions->instance(HealthConfig::class, $config);
+        }
+        if ($logger !== null) {
+            $definitions->instance(LoggerInterface::class, $logger);
         }
 
         return TestClient::forKernel(Kernel::build($definitions, [StatusController::class], [HealthMiddleware::class]));
@@ -68,9 +73,49 @@ final class HealthTest extends TestCase
 
         QueueCheck::$throw = true;
         try {
-            $this->client([QueueCheck::class])->get('/health')->assertStatus(503)->assertJsonPath('checks.queue.detail', 'boom');
+            $this->client([QueueCheck::class])->get('/health')->assertStatus(503)->assertJsonPath('checks.queue.detail', HealthMiddleware::HIDDEN_DETAIL);
         } finally {
             QueueCheck::$throw = false;
+        }
+    }
+
+    public function testExceptionMessagesAreLoggedAndExposedOnlyWhenConfigured(): void
+    {
+        $logger = new class extends AbstractLogger {
+            /** @var list<array{0: string, 1: string, 2: array<mixed>}> */
+            public array $records = [];
+
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                $this->records[] = [is_string($level) ? $level : get_debug_type($level), (string) $message, $context];
+            }
+        };
+
+        QueueCheck::$throw = true;
+        try {
+            $this->client([QueueCheck::class], logger: $logger)->get('/health')
+                ->assertStatus(503)
+                ->assertJsonPath('checks.queue.detail', 'check failed');
+            self::assertCount(1, $logger->records);
+            self::assertSame('error', $logger->records[0][0]);
+            self::assertSame('boom', $logger->records[0][2]['message'] ?? null);
+            self::assertInstanceOf(\RuntimeException::class, $logger->records[0][2]['exception'] ?? null);
+
+            $this->client([QueueCheck::class], new HealthConfig(exposeDetails: true))->get('/health')
+                ->assertStatus(503)
+                ->assertJsonPath('checks.queue.detail', 'boom');
+        } finally {
+            QueueCheck::$throw = false;
+        }
+
+        // A result that carries the exception behaves like a thrown one.
+        QueueCheck::$result = HealthResult::down('SQLSTATE[HY000] [1045] Access denied for user', exception: new \RuntimeException('access denied'));
+        try {
+            $this->client([QueueCheck::class], logger: $logger)->get('/health')->assertStatus(503)->assertJsonPath('checks.queue.detail', 'check failed');
+            self::assertCount(2, $logger->records);
+            $this->client([QueueCheck::class], new HealthConfig(exposeDetails: true))->get('/health')->assertJsonPath('checks.queue.detail', 'SQLSTATE[HY000] [1045] Access denied for user');
+        } finally {
+            QueueCheck::$result = null;
         }
     }
 

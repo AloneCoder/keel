@@ -21,7 +21,13 @@ return new ServicesConfig([PdoProvider::class]);
 `PdoProvider` registers `\PDO` as a shared service created on first use, with exceptions
 (`ERRMODE_EXCEPTION`), associative fetches, native prepares and no stringified fetches unless
 `PdoConfig::$options` says otherwise. It also registers `PdoCheck`, tagged `keel.health`, which
-runs `SELECT 1` and reports the latency.
+runs `SELECT 1`, reports the latency and flags a transaction left open as degraded. The check
+gets the connection lazily (a closure resolving `\PDO` from the container), so a database that
+cannot be reached is a `down` entry in `/health` instead of an exception while the middleware is
+built; the connection is retried on the next probe and kept once it succeeds. Build your own
+checks the same way: `new PdoCheck(fn() => $container->get(\PDO::class), 'replica')`. The error
+message is logged, not shown, unless `HealthConfig::$exposeDetails` is on
+(see [Health and metrics](observability.md#health-checks)).
 
 ```php
 final class UserRepository
@@ -59,7 +65,9 @@ The connection outlives the request. Two rules follow:
   the next request on that worker would run inside it.
 - **Expect the server to drop idle connections.** DBAL reconnects after `close()`; with PDO,
   catch the "server has gone away" exception in a retry of your own, or lower the worker's
-  `MAX_REQUESTS` below the server's idle timeout divided by your request rate.
+  `MAX_REQUESTS` below the server's idle timeout divided by your request rate. The shared `\PDO`
+  is not recreated by the framework: once the server has dropped it, `PdoCheck` reports the
+  worker as down until it is restarted, which is what a readiness probe should do.
 
 Per-request state (identity maps, caches of the current user) belongs in `Resettable` services,
 not on the connection.

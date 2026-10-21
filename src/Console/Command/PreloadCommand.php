@@ -66,9 +66,17 @@ final class PreloadCommand extends Command
         class_exists(\Nyholm\Psr7\UploadedFile::class);
         class_exists(\Nyholm\Psr7\Uri::class);
 
+        $projectDir = self::normalize(rtrim($app->projectDir, '/\\'));
+        // Compiled caches change with keel:compile and config files run at load time: neither belongs in a preload.
+        $excluded = [
+            self::normalize(rtrim($app->config->cacheDir(), '/\\')) . '/',
+            $projectDir . '/config/',
+            self::normalize(dirname(__DIR__)) . '/', // Keel's own console classes
+        ];
+
         $files = [];
         foreach (get_included_files() as $file) {
-            if (self::isPreloadable($file, $app->projectDir)) {
+            if (self::isPreloadable(self::normalize($file), $projectDir, $excluded)) {
                 $files[] = $file;
             }
         }
@@ -76,21 +84,33 @@ final class PreloadCommand extends Command
         return $files;
     }
 
-    private static function isPreloadable(string $file, string $projectDir): bool
+    /**
+     * @param list<string> $excluded directory prefixes, with a trailing slash
+     */
+    private static function isPreloadable(string $file, string $projectDir, array $excluded): bool
     {
-        $normalized = str_replace('\\', '/', $file);
         foreach (['/vendor/composer/', '/vendor/symfony/console/', '/vendor/phpunit/', '/vendor/bin/', '/bin/', '/tests/'] as $skip) {
-            if (str_contains($normalized, $skip)) {
+            if (str_contains($file, $skip)) {
                 return false;
             }
         }
-        if (str_ends_with($normalized, '/preload.php') || str_contains($normalized, '/Console/')) {
+        foreach ($excluded as $prefix) {
+            if (str_starts_with($file, $prefix)) {
+                return false;
+            }
+        }
+        if (str_ends_with($file, '/preload.php')) {
             return false;
         }
 
-        return str_contains($normalized, '/vendor/')
-            || str_contains($normalized, '/src/')
-            || str_starts_with($normalized, str_replace('\\', '/', $projectDir) . '/');
+        return str_contains($file, '/vendor/')
+            || str_contains($file, '/src/')
+            || str_starts_with($file, $projectDir . '/');
+    }
+
+    private static function normalize(string $path): string
+    {
+        return str_replace('\\', '/', $path);
     }
 
     private static function autoloader(): string

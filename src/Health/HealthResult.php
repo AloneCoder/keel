@@ -7,9 +7,11 @@ namespace Keel\Health;
 final readonly class HealthResult
 {
     /**
-     * @param array<string, mixed> $data extra fields exposed in the report (latency, version, ...)
+     * @param array<string, mixed> $data      extra fields exposed in the report (latency, version, ...)
+     * @param \Throwable|null      $exception the failure behind the result: logged by HealthMiddleware, its
+     *                                        message shown in the report only with HealthConfig::$exposeDetails
      */
-    public function __construct(public HealthStatus $status, public ?string $detail = null, public array $data = []) {}
+    public function __construct(public HealthStatus $status, public ?string $detail = null, public array $data = [], public ?\Throwable $exception = null) {}
 
     /**
      * @param array<string, mixed> $data
@@ -30,8 +32,8 @@ final readonly class HealthResult
     /**
      * @param array<string, mixed> $data
      */
-    public static function down(string $detail, array $data = []): self
+    public static function down(string $detail, array $data = [], ?\Throwable $exception = null): self
     {
-        return new self(HealthStatus::Down, $detail, $data);
+        return new self(HealthStatus::Down, $detail, $data, $exception);
     }
 }

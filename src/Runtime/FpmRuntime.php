@@ -22,9 +22,13 @@ final class FpmRuntime implements RuntimeInterface
         $creator = $kernel->container->get(ServerRequestCreatorInterface::class);
         $emitter = $this->emitter ?? new SapiEmitter();
 
-        $response = $kernel->handle($creator->fromGlobals());
-        $emitter->emit($response);
-        $kernel->terminate();
+        // terminate() runs even when request creation or emitting throws: Resettable services
+        // must not keep this request's state, and the exception still reaches the SAPI.
+        try {
+            $emitter->emit($kernel->handle($creator->fromGlobals()));
+        } finally {
+            $kernel->terminate();
+        }
 
         return 0;
     }

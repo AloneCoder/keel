@@ -15,8 +15,9 @@ interface HealthCheck
     public function name(): string;
 
     /**
-     * Must not throw for an expected failure: return HealthResult::down() with the reason.
-     * An exception is reported as down with the exception message.
+     * Must not throw for an expected failure: return HealthResult::down() with the reason, passing
+     * the exception when there is one. A thrown exception is reported as down as well; either way
+     * it is logged, and its message reaches the report only with HealthConfig::$exposeDetails.
      */
     public function check(): HealthResult;
 }

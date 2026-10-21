@@ -41,7 +41,7 @@ final class CommandDiscovery implements DiscoveryInterface
     {
         $this->commands = [];
         foreach ($result as $name => $class) {
-            if (is_string($name) && is_string($class) && class_exists($class)) {
+            if (is_string($name) && is_string($class) && class_exists($class) && is_subclass_of($class, Command::class)) {
                 $this->commands[$name] = $class;
             }
         }

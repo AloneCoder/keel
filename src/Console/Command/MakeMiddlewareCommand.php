@@ -22,6 +22,9 @@ final class MakeMiddlewareCommand extends MakeCommandBase
     {
         $name = $input->getArgument('name');
         $name = self::studly(is_string($name) ? $name : 'Sample');
+        if ($name === '' || !self::isClassName($name)) {
+            return self::invalid($output, 'Middleware name must be a class name, e.g. RateLimit');
+        }
         $class = str_ends_with($name, 'Middleware') ? $name : $name . 'Middleware';
         [$namespace] = $this->rootNamespace();
 

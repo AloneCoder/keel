@@ -86,4 +86,21 @@ final class MiddlewareAndParsingTest extends TestCase
         self::assertSame('Unprocessable Content', HttpException::reasonPhrase(422));
         self::assertSame('HTTP 599', HttpException::reasonPhrase(599));
     }
+
+
+    public function testJsonNestedDeeperThanTheDecoderLimitIs400(): void
+    {
+        $tooDeep = str_repeat('{"a":', 600) . '1' . str_repeat('}', 600);
+
+        try {
+            new BodyParser()->parse(new ServerRequest('POST', '/', ['Content-Type' => 'application/json'], $tooDeep));
+            self::fail('expected a 400');
+        } catch (BadRequestException $e) {
+            self::assertSame(400, $e->status);
+            self::assertStringStartsWith('Malformed JSON body: Maximum stack depth exceeded', $e->getMessage());
+        }
+
+        $fits = str_repeat('{"a":', 500) . '1' . str_repeat('}', 500);
+        self::assertArrayHasKey('a', new BodyParser()->parse(new ServerRequest('POST', '/', ['Content-Type' => 'application/json'], $fits)));
+    }
 }

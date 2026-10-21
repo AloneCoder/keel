@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Keel\Tests\OpenApi\Fixtures;
 
+use Keel\Tests\OpenApi\Fixtures\Nested\Item as NestedItem;
 use Keel\Validation\Choice;
 use Keel\Validation\Count;
 use Keel\Validation\Email;
@@ -15,8 +16,9 @@ use Keel\Validation\Range;
 final readonly class CreateTask
 {
     /**
-     * @param list<Tag>    $tags
-     * @param list<string> $labels
+     * @param list<Tag>        $tags
+     * @param list<string>     $labels
+     * @param list<NestedItem> $items
      */
     public function __construct(
         #[NotBlank]
@@ -36,5 +38,7 @@ final readonly class CreateTask
         public string $state = 'open',
         public int|string|null $external = null,
         public ?\DateTimeImmutable $due = null,
+        public ?Priority $fallback = null,
+        public array $items = [],
     ) {}
 }

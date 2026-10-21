@@ -116,7 +116,45 @@ final class MiddlewareSetTest extends TestCase
         self::assertSame('http://internal/x', (string) $this->seen->getUri());
 
         $middleware->process(new ServerRequest('GET', '/x', ['X-Forwarded-For' => 'garbage, 10.0.0.1'], null, '1.1', ['REMOTE_ADDR' => 'fd00::1']), $this->handler());
-        self::assertSame('fd00::1', TrustedProxiesMiddleware::clientIp($this->seen), 'no valid client in the chain');
+        self::assertSame('10.0.0.1', TrustedProxiesMiddleware::clientIp($this->seen), 'no untrusted client in the chain: the rightmost valid hop, never the client-supplied left end');
+
+        $middleware->process(new ServerRequest('GET', '/x', ['X-Forwarded-For' => 'garbage'], null, '1.1', ['REMOTE_ADDR' => 'fd00::1']), $this->handler());
+        self::assertSame('fd00::1', TrustedProxiesMiddleware::clientIp($this->seen), 'nothing valid in the chain: REMOTE_ADDR');
+    }
+
+    public function testTrustAnyProxyNeverTakesTheClientSuppliedLeftmostAddress(): void
+    {
+        $middleware = new TrustedProxiesMiddleware(new TrustedProxiesConfig(['*']));
+
+        // The client sent "X-Forwarded-For: 1.2.3.4"; the proxy appended the real peer address.
+        $middleware->process(new ServerRequest('GET', '/x', ['X-Forwarded-For' => '1.2.3.4, 203.0.113.9'], null, '1.1', ['REMOTE_ADDR' => '10.0.0.1']), $this->handler());
+        self::assertNotNull($this->seen);
+        self::assertSame('203.0.113.9', TrustedProxiesMiddleware::clientIp($this->seen));
+
+        $middleware->process(new ServerRequest('GET', '/x', ['X-Forwarded-For' => '198.51.100.7'], null, '1.1', ['REMOTE_ADDR' => '10.0.0.1']), $this->handler());
+        self::assertSame('198.51.100.7', TrustedProxiesMiddleware::clientIp($this->seen), 'a single hop is the client');
+    }
+
+    public function testForwardedProtoAloneDropsTheInternalPort(): void
+    {
+        $middleware = new TrustedProxiesMiddleware(new TrustedProxiesConfig(['10.0.0.0/8']));
+
+        $middleware->process(new ServerRequest('GET', 'http://internal:8080/x', ['X-Forwarded-Proto' => 'https'], null, '1.1', ['REMOTE_ADDR' => '10.0.0.1']), $this->handler());
+        self::assertNotNull($this->seen);
+        self::assertSame('https://internal/x', (string) $this->seen->getUri(), 'TLS was terminated upstream: 8080 is not the client-facing port');
+
+        $middleware->process(new ServerRequest('GET', 'http://internal:8080/x', ['X-Forwarded-Proto' => 'https', 'X-Forwarded-Port' => '8443'], null, '1.1', ['REMOTE_ADDR' => '10.0.0.1']), $this->handler());
+        self::assertSame('https://internal:8443/x', (string) $this->seen->getUri(), 'an explicit forwarded port wins');
+
+        $middleware->process(new ServerRequest('GET', 'http://internal:8080/x', ['X-Forwarded-Proto' => 'http'], null, '1.1', ['REMOTE_ADDR' => '10.0.0.1']), $this->handler());
+        self::assertSame('http://internal:8080/x', (string) $this->seen->getUri(), 'same scheme: nothing changes');
+    }
+
+    public function testCorsRefusesWildcardOriginWithCredentials(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('allowCredentials');
+        new CorsConfig(allowedOrigins: ['https://app.test', '*'], allowCredentials: true);
     }
 
     public function testCidrMatching(): void
@@ -130,5 +168,34 @@ final class MiddlewareSetTest extends TestCase
         self::assertFalse(TrustedProxiesConfig::matches('10.0.0.1', '2001:db8::/32'), 'family mismatch');
         self::assertFalse(TrustedProxiesConfig::matches('not-an-ip', '10.0.0.0/8'));
         self::assertTrue(new TrustedProxiesConfig(['*'])->trusts('8.8.8.8'));
+    }
+
+
+    public function testForwardedHostMustBeAHostWithAnOptionalValidPort(): void
+    {
+        $middleware = new TrustedProxiesMiddleware(new TrustedProxiesConfig(['10.0.0.0/8']));
+        $server = ['REMOTE_ADDR' => '10.0.0.1'];
+
+        $ignored = ['-example.com', 'example..com', 'exa_mple.com', 'example.com:0', 'example.com:99999', 'example.com:', 'evil.test/path', 'a:b:c', '::1', '[::1', '[not-an-ip]:80', str_repeat('a', 64) . '.test'];
+        foreach ($ignored as $host) {
+            $middleware->process(new ServerRequest('GET', 'http://internal:8080/x', ['X-Forwarded-Host' => $host], null, '1.1', $server), $this->handler());
+            self::assertNotNull($this->seen);
+            self::assertSame('http://internal:8080/x', (string) $this->seen->getUri(), 'ignored as a whole: ' . $host);
+        }
+
+        $accepted = [
+            'API.Example.com' => 'http://api.example.com/x',
+            'api.example.com:8443' => 'http://api.example.com:8443/x',
+            '127.0.0.1:65535' => 'http://127.0.0.1:65535/x',
+            '[2001:DB8::1]:8443' => 'http://[2001:db8::1]:8443/x',
+            '[::1]' => 'http://[::1]/x',
+            'localhost' => 'http://localhost/x',
+            'xn--80ak6aa92e.com' => 'http://xn--80ak6aa92e.com/x',
+        ];
+        foreach ($accepted as $host => $uri) {
+            $middleware->process(new ServerRequest('GET', 'http://internal:8080/x', ['X-Forwarded-Host' => $host], null, '1.1', $server), $this->handler());
+            self::assertNotNull($this->seen);
+            self::assertSame($uri, (string) $this->seen->getUri(), $host);
+        }
     }
 }

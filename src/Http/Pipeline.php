@@ -12,16 +12,14 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * PSR-15 middleware pipeline, first-in first-run. Middleware given as class names are taken
- * from the container on first use. The pipeline keeps no per-request state, so one instance
- * serves every request of a worker.
+ * from the container on every request, so the container owns their lifetime: a shared service
+ * is one instance for the whole worker, a transient one is fresh for each request. The pipeline
+ * keeps no per-request state, so one instance serves every request of a worker.
  */
 final class Pipeline implements RequestHandlerInterface
 {
     /** @var list<MiddlewareInterface|class-string<MiddlewareInterface>> */
     private readonly array $middleware;
-
-    /** @var array<class-string<MiddlewareInterface>, MiddlewareInterface> */
-    private array $resolved = [];
 
     /** @var array<int, RequestHandlerInterface> handler chain, built once and reused for every request */
     private array $handlers = [];
@@ -60,10 +58,6 @@ final class Pipeline implements RequestHandlerInterface
             return $middleware;
         }
 
-        if (isset($this->resolved[$middleware])) {
-            return $this->resolved[$middleware];
-        }
-
         if ($this->container === null) {
             throw new \LogicException(sprintf('Middleware "%s" is a class name but the pipeline has no container', $middleware));
         }
@@ -73,6 +67,6 @@ final class Pipeline implements RequestHandlerInterface
             throw new \LogicException(sprintf('Service "%s" is not a PSR-15 middleware', $middleware));
         }
 
-        return $this->resolved[$middleware] = $instance;
+        return $instance;
     }
 }

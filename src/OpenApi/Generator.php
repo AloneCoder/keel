@@ -44,6 +44,7 @@ final class Generator
         $paths = [];
         $securitySchemes = $this->securitySchemes();
         $usesProblem = false;
+        $operationIds = [];
 
         foreach ($this->router->routes() as $route) {
             [$class, $methodName] = $route->handler;
@@ -55,8 +56,12 @@ final class Generator
 
             $operation = $this->operation($route, $controller, $method, $schemas, array_keys($securitySchemes), $usesProblem);
             $path = (string) preg_replace(self::PLACEHOLDER, '{$1}', $route->path);
+            $baseId = $operation['operationId'];
+            $several = count($route->methods) > 1;
             foreach ($route->methods as $httpMethod) {
-                $paths[$path][strtolower($httpMethod)] = $operation;
+                $verb = strtolower($httpMethod);
+                $operation['operationId'] = self::uniqueOperationId($baseId . ($several ? ucfirst($verb) : ''), $operationIds);
+                $paths[$path][$verb] = $operation;
             }
         }
 
@@ -91,10 +96,26 @@ final class Generator
     }
 
     /**
+     * Operation ids must be unique in a document: a second use gets a numeric suffix.
+     *
+     * @param array<string, true> $used
+     */
+    private static function uniqueOperationId(string $id, array &$used): string
+    {
+        $candidate = $id;
+        for ($n = 2; isset($used[$candidate]); $n++) {
+            $candidate = $id . $n;
+        }
+        $used[$candidate] = true;
+
+        return $candidate;
+    }
+
+    /**
      * @param \ReflectionClass<object> $controller
      * @param list<string>             $securitySchemes
      *
-     * @return array<string, mixed>
+     * @return array<string, mixed>&array{operationId: string}
      */
     private function operation(
         Route $route,
@@ -109,7 +130,7 @@ final class Generator
 
         $tags = $methodOp?->tags ?: ($classOp?->tags ?: [self::defaultTag($controller)]);
         $operation = [
-            'operationId' => $methodOp->operationId ?? $route->name ?? lcfirst(substr(self::defaultTag($controller), 0, 1)) . substr(self::defaultTag($controller), 1) . ucfirst($method->getName()),
+            'operationId' => $methodOp->operationId ?? $route->name ?? lcfirst(self::defaultTag($controller)) . ucfirst($method->getName()),
             'tags' => $tags,
         ];
         $summary = $methodOp?->summary;
@@ -236,23 +257,36 @@ final class Generator
     }
 
     /**
+     * Declared #[Response]s merged over the success response derived from #[Status] and the
+     * return type; the derived one is dropped once a 2xx is declared.
+     *
      * @return array<int, array<string, mixed>>
      */
     private function responses(Route $route, \ReflectionMethod $method, SchemaBuilder $schemas): array
     {
-        $responses = [];
+        $declared = [];
         foreach ($method->getAttributes(Response::class) as $attribute) {
-            $declared = $attribute->newInstance();
-            $entry = ['description' => $declared->description !== '' ? $declared->description : HttpException::reasonPhrase($declared->status)];
-            if ($declared->type !== null) {
-                $entry['content'] = [$declared->contentType => ['schema' => $schemas->named($declared->type, $declared->items)]];
+            $response = $attribute->newInstance();
+            $entry = ['description' => $response->description !== '' ? $response->description : HttpException::reasonPhrase($response->status)];
+            if ($response->type !== null) {
+                $entry['content'] = [$response->contentType => ['schema' => $schemas->named($response->type, $response->items)]];
             }
-            $responses[$declared->status] = $entry;
+            $declared[$response->status] = $entry;
         }
-        if ($responses !== []) {
-            return $responses;
+        foreach (array_keys($declared) as $status) {
+            if ($status >= 200 && $status < 300) {
+                return $declared;
+            }
         }
 
+        return $declared + $this->derivedResponse($route, $method, $schemas);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function derivedResponse(Route $route, \ReflectionMethod $method, SchemaBuilder $schemas): array
+    {
         $type = $method->getReturnType();
         $name = $type instanceof \ReflectionNamedType ? $type->getName() : null;
         $status = $route->status ?? ($name === 'void' || $name === 'null' ? 204 : 200);

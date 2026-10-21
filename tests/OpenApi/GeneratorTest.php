@@ -22,6 +22,8 @@ use Keel\OpenApi\SchemaBuilder;
 use Keel\Routing\Router;
 use Keel\Testing\TestClient;
 use Keel\Tests\Auth\Fixtures\Tokens;
+use Keel\Tests\OpenApi\Fixtures\Nested\Item;
+use Keel\Tests\OpenApi\Fixtures\Other\TaskController as LegacyTaskController;
 use Keel\Tests\OpenApi\Fixtures\TaskController;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -46,7 +48,7 @@ final class GeneratorTest extends TestCase
         $definitions->set(Tokens::class)->alias(PrincipalResolver::class);
         $definitions->instance(AuthConfig::class, new AuthConfig([BearerTokenAuthenticator::class]));
         $definitions->instance(OpenApiConfig::class, $config ?? new OpenApiConfig('Tasks API', '2.0.0', 'Manage tasks', [['url' => 'https://api.example.com']]));
-        $kernel = Kernel::build($definitions, [TaskController::class]);
+        $kernel = Kernel::build($definitions, [TaskController::class, LegacyTaskController::class]);
 
         $document = $kernel->container->get(Generator::class)->generate();
         $json = json_decode(json_encode($document, \JSON_THROW_ON_ERROR), true, 512, \JSON_THROW_ON_ERROR);
@@ -84,11 +86,37 @@ final class GeneratorTest extends TestCase
         self::assertSame('3.1.0', $doc['openapi']);
         self::assertSame(['title' => 'Tasks API', 'version' => '2.0.0', 'description' => 'Manage tasks'], $doc['info']);
         self::assertSame([['url' => 'https://api.example.com']], $doc['servers']);
-        self::assertSame(['/tasks', '/tasks/{id}', '/tasks/export'], array_keys(self::node($doc, 'paths')));
+        self::assertSame(['/tasks', '/tasks/{id}', '/tasks/export', '/tasks/{id}/owner', '/tasks/sync', '/legacy/export'], array_keys(self::node($doc, 'paths')));
         self::assertSame(['get', 'post'], array_keys(self::node($doc, 'paths', '/tasks')));
         self::assertSame(['get', 'delete'], array_keys(self::node($doc, 'paths', '/tasks/{id}')));
         self::assertSame(['bearer' => ['type' => 'http', 'scheme' => 'bearer']], self::node($doc, 'components', 'securitySchemes'));
-        self::assertSame(['CreateTask', 'Problem', 'Tag', 'TaskView'], array_keys(self::node($doc, 'components', 'schemas')));
+        self::assertSame(['CreateTask', 'Item', 'Problem', 'Tag', 'TaskView'], array_keys(self::node($doc, 'components', 'schemas')));
+    }
+
+    public function testOperationIdsAreUniqueAndDeclaredResponsesMergeOverTheDerivedOne(): void
+    {
+        $doc = $this->document();
+
+        self::assertSame('taskSyncGet', self::node($doc, 'paths', '/tasks/sync', 'get')['operationId'], 'a route with several methods gets one id per method');
+        self::assertSame('taskSyncPost', self::node($doc, 'paths', '/tasks/sync', 'post')['operationId']);
+        self::assertSame('taskExport', self::node($doc, 'paths', '/tasks/export', 'get')['operationId']);
+        self::assertSame('taskExport2', self::node($doc, 'paths', '/legacy/export', 'get')['operationId'], 'a colliding default id is suffixed');
+
+        $ids = [];
+        foreach (self::node($doc, 'paths') as $operations) {
+            self::assertIsArray($operations);
+            foreach ($operations as $operation) {
+                self::assertIsArray($operation);
+                self::assertIsString($operation['operationId']);
+                $ids[] = $operation['operationId'];
+            }
+        }
+        self::assertSame($ids, array_values(array_unique($ids)));
+
+        $owner = self::node($doc, 'paths', '/tasks/{id}/owner', 'get');
+        self::assertSame([200, 400, 404], array_keys(self::node($owner, 'responses')), 'a declared 404 keeps the derived 200');
+        self::assertSame(['$ref' => '#/components/schemas/TaskView'], self::node($owner, 'responses', '200', 'content', 'application/json', 'schema'));
+        self::assertSame(['description' => 'No such task'], self::node($owner, 'responses', '404'));
     }
 
     public function testQueryDtoBecomesParametersAndListReturnTypeIsAnArrayOfRefs(): void
@@ -135,6 +163,8 @@ final class GeneratorTest extends TestCase
         self::assertSame(['type' => 'string', 'enum' => ['open', 'closed'], 'default' => 'open'], $schema['state']);
         self::assertSame(['oneOf' => [['type' => 'string'], ['type' => 'integer'], ['type' => 'null']], 'default' => null], $schema['external']);
         self::assertSame(['type' => ['string', 'null'], 'format' => 'date-time', 'default' => null], $schema['due']);
+        self::assertSame(['type' => ['integer', 'null'], 'enum' => [1, 2, null], 'default' => null], $schema['fallback'], 'a nullable enum lists null');
+        self::assertSame(['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Item'], 'default' => []], $schema['items'], 'element type from an imported alias');
 
         $tag = self::node($doc, 'components', 'schemas', 'Tag');
         self::assertSame(['label'], $tag['required']);
@@ -183,8 +213,16 @@ final class GeneratorTest extends TestCase
         $page = $client->get('/reference')->assertOk()->assertHeader('Content-Type', 'text/html; charset=utf-8')->body();
         self::assertStringContainsString('data-url="/spec.json"', $page);
         self::assertStringContainsString('<title>Tasks API</title>', $page);
+        self::assertStringContainsString('src="' . OpenApiConfig::DEFAULT_DOCS_SCRIPT . '"', $page, 'the reference UI is pinned to a version');
+        self::assertMatchesRegularExpression('~@scalar/api-reference@\d+\.\d+\.\d+~', OpenApiConfig::DEFAULT_DOCS_SCRIPT);
         $client->get('/tasks/export')->assertOk();
         $client->post('/spec.json')->assertStatus(404);
+
+        $pinned = new Definitions();
+        $pinned->instance(OpenApiConfig::class, new OpenApiConfig(docsScript: '/assets/scalar.js'));
+        $self = TestClient::forKernel(Kernel::build($pinned, [TaskController::class], [OpenApiMiddleware::class]))->get('/docs')->assertOk()->body();
+        self::assertStringContainsString('<script src="/assets/scalar.js"></script>', $self);
+        self::assertStringNotContainsString('jsdelivr', $self);
 
         $middleware = new OpenApiMiddleware(new Generator(Router::fromControllers(TaskController::class)), Kernel::build(new Definitions(), [])->container->get(Responder::class));
         $document = $middleware->document();
@@ -201,6 +239,7 @@ final class GeneratorTest extends TestCase
         self::assertSame(\Keel\Tests\OpenApi\Fixtures\Tag::class, DocTypes::paramItems($parameters[4]));
         self::assertSame('string', DocTypes::paramItems($parameters[5]));
         self::assertNull(DocTypes::paramItems($parameters[0]));
+        self::assertSame(Item::class, DocTypes::paramItems($parameters[11]), '"use ... as" imports of the declaring file are honoured');
 
         $builder = new SchemaBuilder();
         self::assertSame(['type' => 'array', 'items' => ['type' => 'integer']], $builder->named('array', 'int'));

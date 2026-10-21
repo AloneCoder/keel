@@ -25,6 +25,9 @@ final class MetricsMiddleware implements MiddlewareInterface
 
     public const string DURATION = 'http_request_duration_seconds';
 
+    /** Methods recorded as themselves; anything else is labelled OTHER, so clients cannot grow the label set. */
+    public const array METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
+
     private readonly MetricsConfig $config;
 
     public function __construct(
@@ -60,7 +63,7 @@ final class MetricsMiddleware implements MiddlewareInterface
 
             throw $e;
         } finally {
-            $method = $request->getMethod();
+            $method = in_array($request->getMethod(), self::METHODS, true) ? $request->getMethod() : 'OTHER';
             $route = $this->routeLabel($request);
             $this->registry->inc(self::REQUESTS, [$method, $route, $status]);
             $this->registry->observe(self::DURATION, [$method, $route], (hrtime(true) - $started) / 1e9);

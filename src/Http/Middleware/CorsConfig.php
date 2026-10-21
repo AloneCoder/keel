@@ -22,7 +22,13 @@ final readonly class CorsConfig
         public array $exposedHeaders = [],
         public bool $allowCredentials = false,
         public int $maxAge = 600,
-    ) {}
+    ) {
+        if ($allowCredentials && in_array('*', $allowedOrigins, true)) {
+            // Browsers refuse "*" with credentials, and reflecting every Origin instead would let any
+            // site make credentialed requests: that is not a configuration, it is a hole.
+            throw new \InvalidArgumentException('CorsConfig: allowCredentials needs an explicit list of allowed origins, "*" is not allowed');
+        }
+    }
 
     public function allowsOrigin(string $origin): bool
     {

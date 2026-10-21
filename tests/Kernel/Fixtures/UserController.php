@@ -144,4 +144,10 @@ final class UserController
     {
         return ['method' => $request->getMethod()];
     }
+
+    #[Put('/scalar')]
+    public function scalar(#[FromBody] string $body): string
+    {
+        return $body;
+    }
 }

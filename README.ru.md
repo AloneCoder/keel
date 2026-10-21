@@ -6,10 +6,8 @@
 атрибутах с ограниченным discovery, компилируемые контейнер и роутер, и один и тот же код
 под php-fpm, FrankenPHP worker mode и RoadRunner.
 
-Статус: 1.2.1, API заморожен под семантическое версионирование. Сайт документации: https://alonecoder.github.io/keel/ru/ Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md). Дорожная карта — в документе с решениями.
+Статус: 1.2.1, API заморожен под семантическое версионирование. Сайт документации: https://alonecoder.github.io/keel/ru/ Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md) и дорожную карту ниже.
 
-- [Анализ рынка](docs/ru/analysis.md) · [English](docs/en/analysis.md)
-- [Проектные решения и дорожная карта](docs/ru/design.md) · [English](docs/en/design.md)
 - [Контейнер](docs/ru/container.md) · [English](docs/en/container.md)
 - [Роутинг](docs/ru/routing.md) · [English](docs/en/routing.md)
 - [HTTP и ядро](docs/ru/http.md) · [English](docs/en/http.md)
@@ -31,6 +29,11 @@ curl http://127.0.0.1:8080/hello/world
 php examples/hello/bin/console keel:routes
 ```
 
+В консоли есть `keel:routes`, `keel:compile`, `keel:cache-clear`, `keel:debug:container`,
+`keel:preload`, `keel:openapi`, `keel:serve` (встроенный сервер или worker mode FrankenPHP с
+`--watch`) и генераторы `keel:make:*` для контроллеров, команд, middleware, слушателей,
+проверок здоровья и аутентификаторов; см. [Приложение](docs/ru/app.md).
+
 Требования: PHP >= 8.4.
 
 ```bash
@@ -38,7 +41,11 @@ composer install
 composer test
 composer stan
 composer cs
+composer infection
 ```
+
+CI запускает тесты на PHP 8.4 и 8.5, PHPStan на уровне max, php-cs-fixer и Infection для
+контейнера, роутера, аутентификации, лимитов, здоровья и метрик (порог MSI 80%).
 
 ## Пакеты
 
@@ -83,7 +90,8 @@ HttpKernel и `terminate()`.
 API-ключ, HMAC), `#[RateLimit]`, эндпоинты здоровья, метрики Prometheus, документ OpenAPI 3.1,
 выводимый из кода, и `keel:serve` для worker mode FrankenPHP в разработке. 1.2 подключил привычных
 соседей: PDO или Doctrine DBAL с проверками здоровья, Twig или Latte, PSR-16 кэш без зависимостей
-и PSR-18 клиент на curl. Дальше решает обратная связь от реальных проектов; очереди и планировщик
+и PSR-18 клиент на curl; 1.2.1 добавил генераторы проверок здоровья и аутентификаторов и
+расширил мутационное тестирование. Дальше решает обратная связь от реальных проектов; очереди и планировщик
 остаются за рамками.
 
 Лицензия: MIT.

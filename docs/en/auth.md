@@ -68,7 +68,19 @@ For machine clients that should not hold a bearer token. The client signs
 `$tolerance` seconds (300 by default), which bounds replays; a replay with a different body,
 path or method fails because they are part of the signed string. Build the header with
 `HmacAuthenticator::sign($keyId, $secret, $method, $target, $body, time())`; the resulting
-principal is an `Identity` whose id is the key id.
+principal is an `Identity` whose id is the key id. `sign()` refuses a key id that cannot travel
+in the header (empty, over 128 bytes, containing a colon or whitespace).
+
+An *identical* request replayed inside the tolerance window is accepted unless the authenticator
+has a `CounterStorage` (its fourth constructor argument, autowired when one is registered, which
+is the case as soon as you configure rate limiting): every signature is then accepted once and a
+repeat answers 401 "Replayed signature". A client that retries after a lost response must sign
+again with a fresh timestamp.
+
+A wrong signature and an unknown key id get the same answer, "Invalid signature", after the same
+amount of work, so key ids cannot be enumerated. Host and `Content-Type` are not part of the
+signed string: a signature is valid on every host that shares the secret, so never share HMAC
+secrets between environments.
 
 ## Requiring authentication
 
@@ -106,14 +118,24 @@ public function search(#[FromBody] Query $query): array { /* ... */ }
 ```
 
 The attribute adds `RateLimitGuard`: every response carries `RateLimit-Limit`,
-`RateLimit-Remaining` and `RateLimit-Reset` (seconds to the end of the window); once exhausted
-the guard answers 429 with `Retry-After`. Windows are fixed and aligned to the clock
-(`RateLimiter`); the client IP is what `TrustedProxiesMiddleware` established, so forwarded
-headers only count from trusted proxies.
+`RateLimit-Remaining` and `RateLimit-Reset` (seconds to the end of the window; the header names
+follow the earlier IETF draft, not the newer single structured `RateLimit` field); once
+exhausted the guard answers 429 with `Retry-After`. Windows are fixed and aligned to the clock
+(`RateLimiter`), so up to twice the limit can pass around a window boundary; the client IP is
+what `TrustedProxiesMiddleware` established, so forwarded headers only count from trusted proxies.
+
+Counters are keyed by HTTP method, route pattern and subject (`GET|/search|ip:203.0.113.5`,
+`GET|/mine|principal:u1`), so two methods on one path and an IP that looks like a principal id
+never share a bucket. With `by: 'principal'` the guard authenticates the request itself when no
+principal was attached yet (no `AuthMiddleware`, or `#[Auth]` declared after `#[RateLimit]`):
+a request with credentials is always counted per principal, invalid credentials get 401, and
+only a truly anonymous request falls back to the IP.
 
 Counters live in a `CounterStorage`: APCu when the extension is loaded (shared by every worker of
 the server), otherwise the memory of the current process. Register your own implementation
-under `CounterStorage` for Redis or a database; `InMemoryCounters` suits tests.
+under `CounterStorage` for Redis or a database; `InMemoryCounters` suits tests. `ApcuCounters`
+fails closed: when APCu cannot store a counter (shared memory exhausted) the limit reads as
+exceeded rather than silently disabled, so size `apc.shm_size` for your key count.
 
 ## Testing
 

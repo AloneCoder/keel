@@ -86,7 +86,11 @@ final class Planner
             }
 
             if (!$parameter->isDefaultValueAvailable()) {
-                return ArgumentPlan::service($name, $class);
+                // "?Foo $foo" without default: inject the service when known, null otherwise,
+                // consistent with nullable scalars below.
+                return $type->allowsNull()
+                    ? ArgumentPlan::optionalService($name, $class, null)
+                    : ArgumentPlan::service($name, $class);
             }
 
             $default = $parameter->getDefaultValue();

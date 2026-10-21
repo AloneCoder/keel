@@ -5,17 +5,23 @@ declare(strict_types=1);
 namespace Keel\Tests\Runtime;
 
 use Keel\Container\Definitions;
+use Keel\Container\Exception\ContainerException;
+use Keel\Http\SapiEmitter;
 use Keel\Kernel\Kernel;
 use Keel\Runtime\FpmRuntime;
 use Keel\Runtime\FrankenPhpRuntime;
 use Keel\Runtime\RoadRunnerRuntime;
 use Keel\Runtime\Runtime;
+use Keel\Tests\Container\Fixtures\ExplodingReset;
 use Keel\Tests\Kernel\Fixtures\ArrayLogger;
 use Keel\Tests\Kernel\Fixtures\Clock;
 use Keel\Tests\Kernel\Fixtures\RequestCounter;
 use Keel\Tests\Kernel\Fixtures\UserController;
+use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\ServerRequest;
+use Nyholm\Psr7Server\ServerRequestCreatorInterface;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -27,6 +33,7 @@ use Spiral\RoadRunner\WorkerInterface;
 #[CoversClass(FpmRuntime::class)]
 #[CoversClass(FrankenPhpRuntime::class)]
 #[CoversClass(RoadRunnerRuntime::class)]
+#[CoversClass(SapiEmitter::class)]
 final class RuntimeTest extends TestCase
 {
     /** @var array<mixed> */
@@ -160,6 +167,29 @@ final class RuntimeTest extends TestCase
         new FrankenPhpRuntime()->run($this->kernel());
     }
 
+    /**
+     * In a child process nothing has been written yet, so headers_sent() is false and the body can
+     * be captured with output buffering. header() is a no-op under the CLI SAPI, so only the body
+     * path (rewind, chunked read) is observable here.
+     */
+    #[RunInSeparateProcess]
+    public function testSapiEmitterRewindsAndStreamsTheBody(): void
+    {
+        $factory = new Psr17Factory();
+        $body = $factory->createStream('0123456789end');
+        $body->seek(5);
+        $response = $factory->createResponse(201)->withHeader('X-Test', 'yes')->withBody($body);
+
+        ob_start();
+        try {
+            new SapiEmitter(4)->emit($response);
+        } finally {
+            $output = ob_get_clean();
+        }
+
+        self::assertSame('0123456789end', $output, 'the stream is rewound and read to the end in chunks');
+    }
+
     public function testRoadRunnerLoopRespondsUntilWorkerStops(): void
     {
         $kernel = $this->kernel();
@@ -192,5 +222,64 @@ final class RuntimeTest extends TestCase
         self::assertSame(0, $exit);
         self::assertSame([200, 204], array_map(static fn(ResponseInterface $r): int => $r->getStatusCode(), $worker->responses));
         self::assertSame(2, $kernel->container->get(RequestCounter::class)->resets);
+    }
+
+
+    public function testFpmRuntimeTerminatesWhenEmittingOrRequestCreationThrows(): void
+    {
+        self::globalsFor('GET', '/api/users/7');
+        $kernel = $this->kernel();
+        $emitter = new CollectingEmitter();
+        $emitter->failWith = new \RuntimeException('socket closed');
+
+        try {
+            new FpmRuntime($emitter)->run($kernel);
+            self::fail('the emit failure must reach the SAPI');
+        } catch (\RuntimeException $e) {
+            self::assertSame('socket closed', $e->getMessage());
+        }
+        self::assertSame(1, $kernel->container->get(RequestCounter::class)->resets, 'terminate() ran although emit() threw');
+
+        $creator = $this->createStub(ServerRequestCreatorInterface::class);
+        $creator->method('fromGlobals')->willThrowException(new \LogicException('bad globals'));
+        $definitions = new Definitions();
+        $definitions->set(Clock::class);
+        $definitions->instance(LoggerInterface::class, new ArrayLogger());
+        $definitions->instance(ServerRequestCreatorInterface::class, $creator);
+        $kernel = Kernel::build($definitions, [UserController::class]);
+        $kernel->container->get(RequestCounter::class);
+
+        try {
+            new FpmRuntime(new CollectingEmitter())->run($kernel);
+            self::fail('the request creation failure must reach the SAPI');
+        } catch (\LogicException $e) {
+            self::assertSame('bad globals', $e->getMessage());
+        }
+        self::assertSame(1, $kernel->container->get(RequestCounter::class)->resets, 'terminate() ran although no request was handled');
+    }
+
+    public function testFpmRuntimeReportsAResetFailureWithTheRequestFailureInItsChain(): void
+    {
+        self::globalsFor('GET', '/api/users/7');
+        $definitions = new Definitions();
+        $definitions->set(Clock::class);
+        $definitions->instance(LoggerInterface::class, new ArrayLogger());
+        $definitions->set(ExplodingReset::class);
+        $kernel = Kernel::build($definitions, [UserController::class]);
+        $kernel->container->get(ExplodingReset::class);
+        $emitter = new CollectingEmitter();
+        $emitter->failWith = new \RuntimeException('socket closed');
+
+        try {
+            new FpmRuntime($emitter)->run($kernel);
+            self::fail('expected the reset failure');
+        } catch (ContainerException $e) {
+            // PHP appends the pending exception to the chain of the one thrown in the finally block.
+            $chain = [];
+            for ($link = $e; $link !== null; $link = $link->getPrevious()) {
+                $chain[] = $link->getMessage();
+            }
+            self::assertSame(['1 service(s) failed to reset: boom (RuntimeException)', 'boom', 'socket closed'], $chain);
+        }
     }
 }

@@ -27,6 +27,18 @@ final class PathParserTest extends TestCase
         yield 'nested braces in quantifier' => ['/y/{year:\d{4}}', '/y/(\d{4})', ['year']];
         yield 'dot in static part is escaped' => ['/file.json', null, []];
         yield 'dot before placeholder is escaped' => ['/v1.{v}', '/v1\.([^/]+)', ['v']];
+        yield 'parenthesis inside a class is literal' => ['/p/{x:[(]+}', '/p/([(]+)', ['x']];
+        yield 'escaped parenthesis is literal' => ['/p/{x:\(\d+\)}', '/p/(\(\d+\))', ['x']];
+        yield 'group after an escaped backslash is neutralised' => ['/p/{x:\\\\(\d+)}', '/p/(\\\\(?:\d+))', ['x']];
+        yield 'non-capturing and lookahead groups are kept' => ['/p/{x:(?:a|b)(?=c)c}', '/p/((?:a|b)(?=c)c)', ['x']];
+    }
+
+    public function testExposesSanitisedPatternsPerPlaceholder(): void
+    {
+        $parsed = new PathParser()->parse('/u/{id:\d+}/{name}/{t:(a|b)}');
+
+        self::assertSame(['\d+', '[^/]+', '(?:a|b)'], $parsed['patterns']);
+        self::assertSame([], new PathParser()->parse('/static')['patterns']);
     }
 
     /**
@@ -52,6 +64,10 @@ final class PathParserTest extends TestCase
         yield 'invalid pattern' => ['/{a:[}'];
         yield 'unclosed brace' => ['/{a'];
         yield 'bad name' => ['/{1a}'];
+        yield 'named group would shift the group count' => ['/{a:(?<n>\d+)}'];
+        yield 'python-style named group' => ['/{a:(?P<n>\d+)}'];
+        yield 'pattern that closes the enclosing group' => ['/{a:\d+)|(.*}'];
+        yield 'delimiter inside pattern' => ['/{a:a~b}'];
     }
 
     #[DataProvider('invalidPaths')]

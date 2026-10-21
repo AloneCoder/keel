@@ -47,7 +47,16 @@ final class GeoClient
 - Status codes are returned, never thrown, as PSR-18 requires. `NetworkException` (DNS,
   connection, TLS, timeout; `getCode()` is the curl error number) and `RequestException`
   (unsupported scheme) implement the PSR-18 exception interfaces.
-- Redirects are followed up to `maxRedirects`; the response is the last hop's.
+- Redirects are followed up to `maxRedirects`, by the client itself rather than by curl, so they
+  behave like a browser: 301, 302 and 303 turn a request with a body into a `GET` without one,
+  307 and 308 repeat the request as sent, `Authorization`, `Proxy-Authorization` and `Cookie`
+  are dropped when the target is another origin (scheme, host or port), relative `Location`
+  values are resolved against the request URI, and only `http`/`https` targets are followed.
+  The response is the last hop's; when the limit is reached, the last redirect response is
+  returned as is.
+- Response header names are matched case-insensitively (`Set-Cookie` and `set-cookie` are one
+  header with every value kept), folded continuation lines are joined, and a response the PSR-7
+  factory refuses is a `RequestException`.
 - The body of `POST`, `PUT`, `PATCH` and `DELETE` requests is sent as is; `GET` and `HEAD`
   never send one. Responses are buffered in memory: for large downloads stream through
   your own curl call or a dedicated client.
