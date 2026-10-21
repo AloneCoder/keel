@@ -139,6 +139,12 @@ final class LogProvider implements ServiceProvider
   раз в общей памяти opcache, а не в каждом процессе php-fpm и не в каждом воркере; особенно это
   касается PSR-7 классов с трейтами, которые opcache иначе не разделяет. В php.ini:
   `opcache.preload=/path/to/var/cache/prod/preload.php`;
+- `keel:openapi [--output=FILE]` — документ OpenAPI 3.1, см. [OpenAPI](openapi.md);
+- `keel:serve [--host] [--port] [--docroot] [--frankenphp] [--worker] [--watch]` — сервер для
+  разработки. По умолчанию встроенный сервер PHP; `--frankenphp` использует бинарник FrankenPHP
+  (`$FRANKENPHP_BINARY` или `frankenphp` в `PATH`), `--worker` — его worker mode, `--watch`
+  перезапускает воркеры при изменении `src/`, `config/` или `.env`. Worker mode в разработке —
+  самый быстрый способ поймать состояние, утекающее между запросами;
 - все найденные `#[AsCommand]`, создаются лениво через контейнер (конструктор автовайрится).
 
 `symfony/console` — опциональная зависимость (`composer require symfony/console`).

@@ -140,6 +140,12 @@ final class LogProvider implements ServiceProvider
   are linked once in opcache shared memory instead of once per php-fpm request or per worker;
   this matters most for the trait-based PSR-7 classes, which opcache cannot share otherwise.
   In php.ini: `opcache.preload=/path/to/var/cache/prod/preload.php`;
+- `keel:openapi [--output=FILE]`: the OpenAPI 3.1 document, see [OpenAPI](openapi.md);
+- `keel:serve [--host] [--port] [--docroot] [--frankenphp] [--worker] [--watch]`: a development
+  server. By default PHP's built-in server; `--frankenphp` uses the FrankenPHP binary
+  (`$FRANKENPHP_BINARY` or `frankenphp` in `PATH`), `--worker` its worker mode, `--watch` restarts
+  the workers when `src/`, `config/` or `.env` change. Worker mode in development is the fastest
+  way to catch state leaking between requests;
 - every discovered `#[AsCommand]`, created lazily through the container (autowired constructor).
 
 `symfony/console` is an optional dependency (`composer require symfony/console`).

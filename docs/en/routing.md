@@ -35,6 +35,16 @@ final class UserController
 - A handler is a public non-static method. Closures are not supported: they cannot be compiled
   into the cache.
 
+### Extension attributes
+
+Two interfaces let other attributes travel with a route. `RouteOption` stores a value on the
+route (`Route::$options[key]`, read with `Route::option('key')`): declared on the class it applies
+to every route, a method-level attribute with the same key overrides it; values go through the
+route cache, so they must be exportable (scalars, arrays). `MiddlewareProvider` adds middleware
+classes to the route; `#[Middleware]` itself is one. `#[Auth]` and `#[RateLimit]` implement both,
+which is how they enforce themselves: the attribute records its settings and adds the guard that
+reads them from the `RouteMatch` request attribute.
+
 ## Path syntax
 
 - `{name}` matches one segment without `/` (`[^/]+`).

@@ -56,6 +56,10 @@ plugins:
             Testing: Тестирование
             Sessions: Сессии
             API stability: Стабильность API
+            Production API: API в продакшене
+            Authentication and rate limiting: Аутентификация и лимиты
+            OpenAPI: OpenAPI
+            Health and metrics: Здоровье и метрики
 nav:
   - Overview: index.md
   - Design:
@@ -70,3 +74,7 @@ nav:
       - Application: app.md
       - Sessions: session.md
       - Testing: testing.md
+  - Production API:
+      - Authentication and rate limiting: auth.md
+      - OpenAPI: openapi.md
+      - Health and metrics: observability.md

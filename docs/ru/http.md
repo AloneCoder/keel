@@ -119,6 +119,10 @@ final readonly class SignUp
 | `RequestIdMiddleware` | — | берёт корректный `X-Request-Id` или генерирует; атрибут `request_id` и заголовок ответа |
 | `TrustedProxiesMiddleware` | `TrustedProxiesConfig` | применяет `X-Forwarded-For/Proto/Host/Port` только от доверенных CIDR; IP клиента в атрибуте `client_ip` |
 | `MethodOverrideMiddleware` | — | `POST` + `X-HTTP-Method-Override` → `PUT`/`PATCH`/`DELETE` |
+| `AuthMiddleware` | `AuthConfig` | аутентифицирует запросы с учётными данными, см. [Аутентификация](auth.md) |
+| `HealthMiddleware` | `HealthConfig` | `/health` и `/health/live`, см. [Здоровье и метрики](observability.md) |
+| `MetricsMiddleware` | `MetricsConfig` | метрики Prometheus и `/metrics` |
+| `OpenApiMiddleware` | `OpenApiConfig` | `/openapi.json` и `/docs`, см. [OpenAPI](openapi.md) |
 
 ## Прочее
 

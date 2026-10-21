@@ -15,12 +15,16 @@
 | Kernel | `Kernel`, `ExceptionHandlerMiddleware`, `ProblemDetails` |
 | Runtime | `RuntimeInterface`, `Runtime`, `FpmRuntime`, `FrankenPhpRuntime`, `RoadRunnerRuntime` |
 | App | `App` (кроме членов с `@internal`), `Config\*`, `Discovery\DiscoveryInterface`, `Discoverer` и встроенные discovery, `Event\*`, `Log\*`, `Session\*`, `Testing\*`, `Console\ConsoleFactory` |
+| Auth (1.1) | `Principal`, `Identity`, `Authenticator`, `PrincipalResolver`, `HmacSecrets`, `SecurityScheme`, встроенные аутентификаторы, `Authentication`, `AuthMiddleware`, `AuthGuard`, `AuthConfig`, `Attribute\Auth` |
+| RateLimit (1.1) | `Attribute\RateLimit`, `RateLimiter`, `RateLimitResult`, `RateLimitGuard`, `CounterStorage` и его реализации |
+| Health, Metrics (1.1) | `HealthCheck`, `HealthResult`, `HealthStatus`, `HealthConfig`, `HealthMiddleware`; `Registry`, `MetricsStorage` и его реализации, `MetricsConfig`, `MetricsMiddleware` |
+| OpenAPI (1.1) | классы `Attribute\*`, `OpenApiConfig`, `Generator`, `SchemaBuilder`, `OpenApiMiddleware` |
 
 **Стабильные форматы.** Форма JSON Problem Details, формат сообщений `errors` вида `"поле: текст"`,
 атрибуты `Set-Cookie` сессий, имена и аргументы консольных команд.
 
 **Не покрывается.** Всё с `@internal` (парсеры, компиляторы, матчеры, планировщик рефлексии,
-`AppBuilder`, `ErrorPage`, базовые классы генераторов), сгенерированные файлы кэшей
+`AppBuilder`, `ErrorPage`, `DocTypes`, базовые классы генераторов), сгенерированные файлы кэшей
 (`container.php`, `routes.php`, `discovery.php`, `preload.php`: пересобирайте их `keel:compile`
 после каждого обновления), HTML страницы ошибки, формулировки строк лога и скрипты бенчмарков.
 

@@ -12,6 +12,8 @@ cd my-app && composer serve
 - [Проектные решения](design.md) объясняют, почему фреймворк устроен именно так.
 - [Контейнер](container.md), [Роутинг](routing.md), [HTTP и ядро](http.md), [Рантаймы](runtime.md),
   [Приложение](app.md), [Сессии](session.md), [Тестирование](testing.md) описывают компоненты.
+- [Аутентификация и лимиты](auth.md), [OpenAPI](openapi.md), [Здоровье и метрики](observability.md) —
+  то, что нужно API в продакшене поверх ядра (с 1.1).
 - [Стабильность API](api.md) фиксирует, что покрывает семантическое версионирование с 1.0.
 
 Исходники, issue и бенчмарки: [github.com/AloneCoder/keel](https://github.com/AloneCoder/keel).

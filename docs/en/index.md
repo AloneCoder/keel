@@ -12,6 +12,8 @@ cd my-app && composer serve
 - [Design decisions](design.md) explain why the framework looks the way it does.
 - [Container](container.md), [Routing](routing.md), [HTTP and kernel](http.md), [Runtimes](runtime.md),
   [Application](app.md), [Sessions](session.md), [Testing](testing.md) cover each component.
+- [Authentication and rate limiting](auth.md), [OpenAPI](openapi.md), [Health and metrics](observability.md)
+  are what a production API needs on top (since 1.1).
 - [API stability](api.md) states what semantic versioning covers from 1.0.
 
 Source, issues and benchmarks: [github.com/AloneCoder/keel](https://github.com/AloneCoder/keel).

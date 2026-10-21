@@ -120,6 +120,10 @@ Listed in `HttpConfig`; their settings are plain config objects in `config/`:
 | `RequestIdMiddleware` | — | trusts a well-formed `X-Request-Id` or issues one; `request_id` attribute and response header |
 | `TrustedProxiesMiddleware` | `TrustedProxiesConfig` | applies `X-Forwarded-For/Proto/Host/Port` only from trusted CIDRs; client IP in the `client_ip` attribute |
 | `MethodOverrideMiddleware` | — | `POST` + `X-HTTP-Method-Override` → `PUT`/`PATCH`/`DELETE` |
+| `AuthMiddleware` | `AuthConfig` | authenticates requests carrying credentials, see [Authentication](auth.md) |
+| `HealthMiddleware` | `HealthConfig` | `/health` and `/health/live`, see [Health and metrics](observability.md) |
+| `MetricsMiddleware` | `MetricsConfig` | Prometheus metrics and `/metrics` |
+| `OpenApiMiddleware` | `OpenApiConfig` | `/openapi.json` and `/docs`, see [OpenAPI](openapi.md) |
 
 ## Miscellaneous
 
