@@ -8,6 +8,7 @@ use Keel\Container\Exception\CircularDependencyException;
 use Keel\Container\Exception\NotFoundException;
 use Keel\Container\Reflection\ClassAttributes;
 use Keel\Container\Reflection\Instantiator;
+use Psr\Container\ContainerInterface as PsrContainerInterface;
 
 /**
  * Reflection-based container for development and tests. Production uses the compiled
@@ -38,6 +39,9 @@ final class Container implements ContainerInterface
     ) {
         $this->instantiator = $instantiator ?? new Instantiator();
         $this->instances = $definitions->instances();
+        // The container can inject itself under both the PSR and the Keel interface.
+        $this->instances[PsrContainerInterface::class] = $this;
+        $this->instances[ContainerInterface::class] = $this;
     }
 
     public function get(string $id): mixed

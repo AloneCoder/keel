@@ -1,0 +1,62 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Keel\Routing;
+
+final class Matcher
+{
+    public function __construct(private readonly CompiledRoutes $routes) {}
+
+    /**
+     * @param string $path raw (undecoded) request path; placeholders are decoded individually
+     */
+    public function match(string $method, string $path): MatchResult
+    {
+        $method = strtoupper($method);
+        $result = $this->matchMethod($method, $path);
+        if ($result !== null) {
+            return $result;
+        }
+
+        if ($method === 'HEAD') {
+            $result = $this->matchMethod('GET', $path);
+            if ($result !== null) {
+                return $result;
+            }
+        }
+
+        $allowed = [];
+        foreach (array_keys($this->routes->static + $this->routes->dynamic) as $candidate) {
+            if ($candidate !== $method && $this->matchMethod($candidate, $path) !== null) {
+                $allowed[] = $candidate;
+            }
+        }
+
+        return $allowed === [] ? MatchResult::notFound() : MatchResult::methodNotAllowed($allowed);
+    }
+
+    private function matchMethod(string $method, string $path): ?MatchResult
+    {
+        $index = $this->routes->static[$method][$path] ?? null;
+        if ($index !== null) {
+            return MatchResult::found($this->routes->routes[$index], []);
+        }
+
+        foreach ($this->routes->dynamic[$method] ?? [] as $chunk) {
+            if (preg_match($chunk['regex'], $path, $matches) !== 1) {
+                continue;
+            }
+
+            [$index, $variables] = $chunk['map'][count($matches)];
+            $params = [];
+            foreach ($variables as $position => $name) {
+                $params[$name] = rawurldecode($matches[$position + 1]);
+            }
+
+            return MatchResult::found($this->routes->routes[$index], $params);
+        }
+
+        return null;
+    }
+}

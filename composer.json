@@ -27,10 +27,15 @@
         "spiral/roadrunner-http": "RoadRunner runtime adapter"
     },
     "autoload": {
-        "psr-4": { "Keel\\": "src/" }
+        "psr-4": {
+            "Keel\\": "src/"
+        }
     },
     "autoload-dev": {
-        "psr-4": { "Keel\\Tests\\": "tests/" }
+        "psr-4": {
+            "Keel\\Tests\\": "tests/",
+            "Keel\\Examples\\Hello\\": "examples/hello/src/"
+        }
     },
     "scripts": {
         "test": "phpunit",

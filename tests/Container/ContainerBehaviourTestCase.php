@@ -289,6 +289,15 @@ abstract class ContainerBehaviourTestCase extends TestCase
         self::assertFalse($container->has('nope'));
     }
 
+    public function testContainerInjectsItself(): void
+    {
+        $container = $this->createContainer(new Definitions());
+
+        self::assertSame($container, $container->get(ContainerInterface::class));
+        self::assertSame($container, $container->get(\Psr\Container\ContainerInterface::class));
+        self::assertTrue($container->has(\Psr\Container\ContainerInterface::class));
+    }
+
     public function testUnknownIdThrowsNotFound(): void
     {
         $container = $this->createContainer(new Definitions());
