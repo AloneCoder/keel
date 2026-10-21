@@ -99,6 +99,31 @@ Listeners on a parent class or an interface receive subclasses too. Order: prior
 descending, then registration order. `StoppableEventInterface` stops the chain. The listener
 object is created by the container on the first event, so it can have dependencies.
 
+## Logging
+
+Unless the application registers a `Psr\Log\LoggerInterface`, `App::boot()` wires
+`Keel\Log\StreamLogger`: dependency-free PSR-3, one JSON line per record to `php://stderr`
+(collected by FrankenPHP, RoadRunner and Docker). Settings come from `LoggerConfig` in
+`config/logger.php`: stream, minimum level, channel, JSON or text. Exceptions in the context
+become class, message and location; `{placeholders}` are interpolated from the context.
+
+Monolog plugs in through a provider:
+
+```php
+final class LogProvider implements ServiceProvider
+{
+    public function register(Definitions $d): void
+    {
+        $d->set(Logger::class)->factory([self::class, 'monolog'])->alias(LoggerInterface::class);
+    }
+
+    public static function monolog(LoggerConfig $config): Logger
+    {
+        return new Logger($config->channel)->pushHandler(new StreamHandler($config->stream));
+    }
+}
+```
+
 ## Console
 
 `ConsoleFactory::create($app)` returns a Symfony Console Application with:

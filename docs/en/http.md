@@ -81,6 +81,45 @@ and reported as one `BadRequestException` with an `errors` field:
 - Any other exception is a 500 with the title "Internal Server Error" and no `detail`; it is
   logged through the `LoggerInterface` from the container when one is registered.
 - In `debug` mode `detail` and an `exception` object with class, file, line and trace are added.
+- When the client prefers `text/html` (per `Accept`, with no JSON listed earlier) an HTML page is
+  sent instead of JSON: status and title only in production; in debug the exception chain, the
+  trace, the request with `Authorization`/`Cookie` redacted and a "Copy as Markdown" button.
+
+## Validation
+
+`Keel\Validation\*` attributes on DTO constructor parameters are checked by the hydrator after
+type casting; their messages join the same `errors` list:
+
+```php
+final readonly class SignUp
+{
+    public function __construct(
+        #[NotBlank, Length(min: 2, max: 50)] public string $name,
+        #[Email] public string $email,
+        #[Range(min: 18)] public int $age,
+        #[Pattern('/^[a-z0-9-]+$/', 'must be a slug')] public string $slug = '',
+        #[Choice(['free', 'pro'])] public string $plan = 'free',
+        #[Count(max: 5)] public array $tags = [],
+        #[Url(schemes: ['https'])] public ?string $site = null,
+    ) {}
+}
+```
+
+Rules: `NotBlank`, `Length`, `Range`, `Count`, `Pattern`, `Email`, `Url`, `Choice`. A rule runs
+only on fields that were sent; `null` is checked by `NotBlank` alone; after a type error the
+field's rules are skipped. A custom rule is an attribute class implementing
+`Keel\Validation\Rule::check()`.
+
+## Built-in middleware
+
+Listed in `HttpConfig`; their settings are plain config objects in `config/`:
+
+| Middleware | Config | What it does |
+|---|---|---|
+| `CorsMiddleware` | `CorsConfig` | answers preflights (204) before routing, adds `Access-Control-*`; origins exact, `*` or patterns like `https://*.example.com` |
+| `RequestIdMiddleware` | — | trusts a well-formed `X-Request-Id` or issues one; `request_id` attribute and response header |
+| `TrustedProxiesMiddleware` | `TrustedProxiesConfig` | applies `X-Forwarded-For/Proto/Host/Port` only from trusted CIDRs; client IP in the `client_ip` attribute |
+| `MethodOverrideMiddleware` | — | `POST` + `X-HTTP-Method-Override` → `PUT`/`PATCH`/`DELETE` |
 
 ## Miscellaneous
 

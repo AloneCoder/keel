@@ -98,6 +98,31 @@ $this->events->dispatch(new Greeted($name));   // EventDispatcherInterface из 
 затем порядок регистрации. `StoppableEventInterface` останавливает цепочку. Объект-слушатель
 создаётся контейнером при первом событии, поэтому у него могут быть зависимости.
 
+## Логирование
+
+Если приложение не зарегистрировало `Psr\Log\LoggerInterface`, `App::boot()` подключает
+`Keel\Log\StreamLogger`: PSR-3 без зависимостей, одна JSON-строка на запись в `php://stderr`
+(их собирают FrankenPHP, RoadRunner и Docker). Настройки — `LoggerConfig` в `config/logger.php`:
+поток, минимальный уровень, канал, JSON или текст. Исключения в контексте превращаются в класс,
+сообщение и место; `{placeholders}` подставляются из контекста.
+
+Monolog подключается провайдером:
+
+```php
+final class LogProvider implements ServiceProvider
+{
+    public function register(Definitions $d): void
+    {
+        $d->set(Logger::class)->factory([self::class, 'monolog'])->alias(LoggerInterface::class);
+    }
+
+    public static function monolog(LoggerConfig $config): Logger
+    {
+        return new Logger($config->channel)->pushHandler(new StreamHandler($config->stream));
+    }
+}
+```
+
 ## Консоль
 
 `ConsoleFactory::create($app)` возвращает Symfony Console Application c командами:

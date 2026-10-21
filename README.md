@@ -15,6 +15,7 @@ Status: 0.1.0, the whole core is in place. See [CHANGELOG.md](CHANGELOG.md). See
 - [HTTP and kernel](docs/en/http.md) · [по-русски](docs/ru/http.md)
 - [Runtimes: php-fpm, FrankenPHP, RoadRunner](docs/en/runtime.md) · [по-русски](docs/ru/runtime.md)
 - [Application: config, discovery, events, console](docs/en/app.md) · [по-русски](docs/ru/app.md)
+- [Testing](docs/en/testing.md) · [по-русски](docs/ru/testing.md)
 
 Try the example:
 

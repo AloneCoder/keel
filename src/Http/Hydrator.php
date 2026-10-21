@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Keel\Http;
 
 use Keel\Http\Exception\BadRequestException;
+use Keel\Validation\NotBlank;
+use Keel\Validation\Rule;
 
 /**
  * Builds DTOs from request data by calling the constructor with named, type-cast values.
- * Supports scalars, nullable types, defaults, arrays, backed and unit enums and nested DTOs.
- * Every problem is collected and reported at once as a 400 with per-field errors.
+ * Supports scalars, nullable types, defaults, arrays, backed and unit enums and nested DTOs,
+ * then runs the Keel\Validation rule attributes of each parameter. Every problem is collected
+ * and reported at once as a 400 with per-field errors.
  */
 final class Hydrator
 {
@@ -39,6 +42,9 @@ final class Hydrator
     {
         $errors = [];
         $result = $this->castValue($value, $parameter->getType(), $path, $errors);
+        if ($errors === []) {
+            $this->validate($result, $parameter, $path, $errors);
+        }
         if ($errors !== []) {
             throw new BadRequestException('Invalid request data', [], $errors);
         }
@@ -69,7 +75,12 @@ final class Hydrator
             $field = $path === '' ? $name : $path . '.' . $name;
 
             if (array_key_exists($name, $data)) {
-                $arguments[] = $this->castValue($data[$name], $parameter->getType(), $field, $errors);
+                $before = count($errors);
+                $value = $this->castValue($data[$name], $parameter->getType(), $field, $errors);
+                if (count($errors) === $before) {
+                    $this->validate($value, $parameter, $field, $errors);
+                }
+                $arguments[] = $value;
             } elseif ($parameter->isDefaultValueAvailable()) {
                 $arguments[] = $parameter->getDefaultValue();
             } elseif ($parameter->allowsNull()) {
@@ -86,6 +97,25 @@ final class Hydrator
         }
 
         return $reflection->newInstanceArgs($arguments);
+    }
+
+    /**
+     * Runs the Rule attributes of the parameter. A null value is only checked by NotBlank.
+     *
+     * @param list<string> $errors
+     */
+    private function validate(mixed $value, \ReflectionParameter $parameter, string $path, array &$errors): void
+    {
+        foreach ($parameter->getAttributes(Rule::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
+            $rule = $attribute->newInstance();
+            if ($value === null && !$rule instanceof NotBlank) {
+                continue;
+            }
+            $message = $rule->check($value);
+            if ($message !== null) {
+                $errors[] = sprintf('%s: %s', $path, $message);
+            }
+        }
     }
 
     /**

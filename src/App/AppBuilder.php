@@ -20,9 +20,11 @@ use Keel\Discovery\ServiceDiscovery;
 use Keel\Event\EventDispatcher;
 use Keel\Event\ListenerProvider;
 use Keel\Kernel\Kernel;
+use Keel\Log\StreamLogger;
 use Keel\Routing\Router;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\EventDispatcher\ListenerProviderInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * The build side of App: discovery, definitions, cache writing. Loaded in debug mode, when a
@@ -88,7 +90,8 @@ final class AppBuilder
 
     /**
      * Runs discovery and builds the definitions: env, configs, providers, discovered services,
-     * events with the discovered listeners, kernel defaults, then the $configure closure.
+     * events with the discovered listeners, kernel defaults, the built-in logger unless the
+     * application registered a LoggerInterface, then the $configure closure.
      *
      * @param array<class-string, object>              $configs
      * @param (\Closure(Definitions, Env): void)|null $configure
@@ -131,6 +134,9 @@ final class AppBuilder
             $definitions->set(EventDispatcher::class)->alias(EventDispatcherInterface::class);
         }
         Kernel::registerDefaults($definitions);
+        if ($definitions->definition(StreamLogger::class) === null && !isset($definitions->aliases()[LoggerInterface::class]) && !isset($definitions->instances()[LoggerInterface::class])) {
+            $definitions->set(StreamLogger::class)->alias(LoggerInterface::class);
+        }
         $configure?->__invoke($definitions, $env);
 
         return [$definitions, $discoverer];

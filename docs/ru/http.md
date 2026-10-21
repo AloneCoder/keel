@@ -81,6 +81,44 @@ $kernel->terminate();                     // после отправки отв�
 - Любое другое исключение — 500 с `title` «Internal Server Error», без `detail`; оно
   логируется через `LoggerInterface` из контейнера, если он зарегистрирован.
 - В `debug` добавляется `detail` и объект `exception` с классом, файлом, строкой и трейсом.
+- Если клиент предпочитает `text/html` (по `Accept`, и JSON не указан раньше), вместо JSON отдаётся
+  HTML-страница: в prod только статус и заголовок, в debug — цепочка исключений, трейс, запрос
+  с замаскированными `Authorization`/`Cookie` и кнопка «Copy as Markdown» для баг-репорта.
+
+## Валидация
+
+Атрибуты `Keel\Validation\*` на параметрах конструктора DTO проверяются гидратором после
+приведения типов, ошибки попадают в тот же список `errors`:
+
+```php
+final readonly class SignUp
+{
+    public function __construct(
+        #[NotBlank, Length(min: 2, max: 50)] public string $name,
+        #[Email] public string $email,
+        #[Range(min: 18)] public int $age,
+        #[Pattern('/^[a-z0-9-]+$/', 'must be a slug')] public string $slug = '',
+        #[Choice(['free', 'pro'])] public string $plan = 'free',
+        #[Count(max: 5)] public array $tags = [],
+        #[Url(schemes: ['https'])] public ?string $site = null,
+    ) {}
+}
+```
+
+Правила: `NotBlank`, `Length`, `Range`, `Count`, `Pattern`, `Email`, `Url`, `Choice`. Правило
+применяется только к переданным полям; `null` проверяет лишь `NotBlank`; при ошибке типа правила
+поля не запускаются. Своё правило — класс-атрибут, реализующий `Keel\Validation\Rule::check()`.
+
+## Встроенные middleware
+
+Подключаются списком в `HttpConfig`, конфиги — обычные объекты в `config/`:
+
+| Middleware | Конфиг | Что делает |
+|---|---|---|
+| `CorsMiddleware` | `CorsConfig` | отвечает на preflight (204) без роутера, добавляет `Access-Control-*`; origin точный, `*` или шаблон `https://*.example.com` |
+| `RequestIdMiddleware` | — | берёт корректный `X-Request-Id` или генерирует; атрибут `request_id` и заголовок ответа |
+| `TrustedProxiesMiddleware` | `TrustedProxiesConfig` | применяет `X-Forwarded-For/Proto/Host/Port` только от доверенных CIDR; IP клиента в атрибуте `client_ip` |
+| `MethodOverrideMiddleware` | — | `POST` + `X-HTTP-Method-Override` → `PUT`/`PATCH`/`DELETE` |
 
 ## Прочее
 
