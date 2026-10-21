@@ -4,14 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 TAG="${1:-}"
-declare -A COMPONENTS=(
-  [container]=src/Container
-  [router]=src/Routing
-  [http]=src/Http
-  [validation]=src/Validation
-)
-for name in "${!COMPONENTS[@]}"; do
-  prefix="${COMPONENTS[$name]}"
+for entry in container:src/Container router:src/Routing http:src/Http validation:src/Validation; do
+  name="${entry%%:*}"
+  prefix="${entry#*:}"
   remote="https://github.com/AloneCoder/keel-${name}.git"
   echo "== keel/${name} (${prefix}) -> ${remote}"
   sha=$(git subtree split --prefix="$prefix" 2>/dev/null)
