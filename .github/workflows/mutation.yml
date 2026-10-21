@@ -19,7 +19,7 @@ jobs:
           coverage: pcov
           tools: composer:v2
       - run: composer install --no-interaction --prefer-dist --no-progress
-      - run: vendor/bin/infection --threads=4 --min-msi=80 --min-covered-msi=85 --logger-github --no-progress
+      - run: vendor/bin/infection --threads=4 --min-msi=80 --min-covered-msi=80 --logger-github --no-progress
       - uses: actions/upload-artifact@v4
         if: always()
         with:

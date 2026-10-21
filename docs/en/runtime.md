@@ -61,6 +61,12 @@ The example was run under FrankenPHP 1.12.6 (embedded PHP 8.5.8) in worker mode 
 `examples/hello/Caddyfile`: one pid for every request, `request_hits` equal to 1 in every
 response, `worker_hits` growing, 300 consecutive requests all answered 200, no errors in the log.
 
+## Load
+
+`benchmarks/frankenphp/run.sh` starts Keel and Slim 4 in FrankenPHP worker mode and hits them with `oha`.
+On an Apple Silicon laptop, 8 workers, 64 connections, 10 s: Keel 8 486 requests/s, Slim 8 603,
+median 5.2 ms, p99 34 ms for both. The ceiling is Caddy's HTTP stack, not the framework.
+
 ## Example configurations
 
 - `examples/hello/Caddyfile`: `frankenphp run --config examples/hello/Caddyfile`

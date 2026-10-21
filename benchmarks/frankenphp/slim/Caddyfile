@@ -1,0 +1,14 @@
+{
+	frankenphp {
+		worker {
+			file ./public/index.php
+			num 8
+		}
+	}
+	auto_https off
+}
+
+http://:8082 {
+	root * public
+	php_server
+}

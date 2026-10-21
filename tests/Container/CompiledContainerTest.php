@@ -81,8 +81,17 @@ final class CompiledContainerTest extends ContainerBehaviourTestCase
         $fqcn = self::load($definitions, 'KeelCompiledContainerMissing');
 
         $this->expectException(ContainerException::class);
-        $this->expectExceptionMessage(HttpConfig::class);
+        $this->expectExceptionMessage('Compiled container requires instances for: ' . HttpConfig::class);
         new $fqcn([]);
+    }
+
+    public function testAutowiringIsOnByDefault(): void
+    {
+        $fqcn = self::load(new Definitions(), 'KeelCompiledContainerDefaults');
+        $container = new $fqcn();
+
+        self::assertTrue($container->has(Logger::class));
+        self::assertSame($container->get(Logger::class), $container->get(Logger::class), 'autowired classes are shared');
     }
 
     public function testClosureFactoryCannotBeCompiled(): void

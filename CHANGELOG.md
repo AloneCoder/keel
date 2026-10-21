@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
+## [1.0.0] - 2026-10-21
+
+The public API is frozen: see docs/en/api.md for what semantic versioning covers.
+
+### Added
+
+- `tests/Security` (group `security`): placeholder-constraint bypasses, method override limits,
+  header injection, host poisoning, forged session cookies, information leaks in production,
+  escaping and redaction on the debug page, JSON limits, state isolation between requests.
+- Mutation testing with Infection on the container and router (`composer infection`, CI gate 80% MSI).
+- Load test under FrankenPHP worker mode against Slim 4 (`benchmarks/frankenphp/run.sh`).
+- Documentation site built with mkdocs-material in English and Russian: https://alonecoder.github.io/keel/
+
+### Changed
+
+- Internals are marked `@internal`: parsers, compilers, matchers, the reflection planner,
+  `AppBuilder`, `ErrorPage`, generator base classes.
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

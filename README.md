@@ -6,7 +6,7 @@ A small, worker-first PHP micro-framework: PSR-7/11/14/15/17 all the way, attrib
 routing with scoped discovery, a compiled container and router, and the same code running
 under php-fpm, FrankenPHP worker mode and RoadRunner.
 
-Status: 0.3.0. Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md). See the roadmap in the design document.
+Status: 1.0.0, API frozen under semantic versioning. Documentation site: https://alonecoder.github.io/keel/ Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md). See the roadmap in the design document.
 
 - [Landscape analysis](docs/en/analysis.md) · [по-русски](docs/ru/analysis.md)
 - [Design decisions and roadmap](docs/en/design.md) · [по-русски](docs/ru/design.md)
@@ -63,6 +63,10 @@ only for routes that match, and nothing survives a request: 2000 requests in a r
 `keel:preload` generates an `opcache.preload` script so php-fpm links every class once: with
 it a boot allocates 4 KB and loads 3 files, and boot plus first request drops from 12.8 ms to 2.7 ms.
 Measure with `php -d opcache.enable_cli=1 memory.php` and `memory-classes.php` in `benchmarks/`.
+
+Under a real server: FrankenPHP 1.12 worker mode (8 workers), `oha` with 64 connections for 10 s on
+the same laptop, same JSON route: Keel 8 486 requests/s, Slim 8 603 requests/s, median latency 5.2 ms
+and p99 34 ms for both, every response 200. Reproduce with `benchmarks/frankenphp/run.sh`.
 
 Keel does more work per request than the Slim app in this table (attribute controller,
 argument resolution with type casting, Problem Details handler, container-resolved

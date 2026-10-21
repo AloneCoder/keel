@@ -60,6 +60,12 @@ Prod-старт с готовыми кэшами загружает около 3
 один pid на все запросы, `request_hits` равен 1 в каждом ответе, `worker_hits` растёт, 300 запросов
 подряд — все 200, ошибок в логе нет.
 
+## Нагрузка
+
+`benchmarks/frankenphp/run.sh` поднимает Keel и Slim 4 в FrankenPHP worker mode и обстреливает их `oha`.
+На ноутбуке с Apple Silicon, 8 воркеров, 64 соединения, 10 с: Keel 8 486 запросов/с, Slim 8 603,
+медиана 5,2 мс, p99 34 мс у обоих. Потолок задаёт HTTP-стек Caddy, а не фреймворк.
+
 ## Конфигурации примера
 
 - `examples/hello/Caddyfile` — `frankenphp run --config examples/hello/Caddyfile`

@@ -21,6 +21,7 @@ use Keel\Tests\Container\Fixtures\Counter;
 use Keel\Tests\Container\Fixtures\CycleA;
 use Keel\Tests\Container\Fixtures\Database;
 use Keel\Tests\Container\Fixtures\Dispatcher;
+use Keel\Tests\Container\Fixtures\ExplodingFactory;
 use Keel\Tests\Container\Fixtures\FrozenClock;
 use Keel\Tests\Container\Fixtures\Handler;
 use Keel\Tests\Container\Fixtures\HeavyService;
@@ -286,6 +287,27 @@ abstract class ContainerBehaviourTestCase extends TestCase
         self::assertTrue($container->has('db.dsn'));
         self::assertFalse($container->has(Handler::class));
         self::assertFalse($container->has(AbstractThing::class));
+        self::assertFalse($container->has('nope'));
+    }
+
+    public function testFailedInstantiationDoesNotPoisonLaterAttempts(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set('exploding', Logger::class)->factory(ExplodingFactory::class . '::create');
+        $definitions->set('dependent', Mailer::class)->argument('logger', new Ref('exploding'));
+        $container = $this->createContainer($definitions);
+        ExplodingFactory::$attempts = 0;
+
+        foreach (['exploding', 'dependent'] as $id) {
+            try {
+                $container->get($id);
+                self::fail('expected the factory failure');
+            } catch (\RuntimeException $e) {
+                self::assertSame('factory failed', $e->getMessage(), 'the real error, never a circular-dependency report');
+            }
+        }
+
+        self::assertSame(2, ExplodingFactory::$attempts, 'nothing is cached after a failure');
         self::assertFalse($container->has('nope'));
     }
 

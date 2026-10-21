@@ -6,7 +6,7 @@
 атрибутах с ограниченным discovery, компилируемые контейнер и роутер, и один и тот же код
 под php-fpm, FrankenPHP worker mode и RoadRunner.
 
-Статус: 0.3.0. Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md). Дорожная карта — в документе с решениями.
+Статус: 1.0.0, API заморожен под семантическое версионирование. Сайт документации: https://alonecoder.github.io/keel/ru/ Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md). Дорожная карта — в документе с решениями.
 
 - [Анализ рынка](docs/ru/analysis.md) · [English](docs/en/analysis.md)
 - [Проектные решения и дорожная карта](docs/ru/design.md) · [English](docs/en/design.md)
@@ -63,6 +63,10 @@ PHP 8.4.21 с opcache, JIT выключен, ноутбук на Apple Silicon, 
 `keel:preload` генерирует скрипт для `opcache.preload`, чтобы php-fpm линковал классы один раз: с ним
 старт выделяет 4 КБ и загружает 3 файла, а старт плюс первый запрос падает с 12,8 до 2,7 мс.
 Измерить: `php -d opcache.enable_cli=1 memory.php` и `memory-classes.php` в `benchmarks/`.
+
+Под реальным сервером: FrankenPHP 1.12 worker mode (8 воркеров), `oha` с 64 соединениями 10 с на том
+же ноутбуке, тот же JSON-маршрут: Keel 8 486 запросов/с, Slim 8 603 запросов/с, медиана 5,2 мс и
+p99 34 мс у обоих, все ответы 200. Воспроизвести: `benchmarks/frankenphp/run.sh`.
 
 Keel в этой таблице делает на запрос больше, чем приложение на Slim (контроллер с
 атрибутами, разрешение аргументов с приведением типов, обработчик Problem Details,
