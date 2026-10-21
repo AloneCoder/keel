@@ -14,6 +14,8 @@ cd my-app && composer serve
   [Приложение](app.md), [Сессии](session.md), [Тестирование](testing.md) описывают компоненты.
 - [Аутентификация и лимиты](auth.md), [OpenAPI](openapi.md), [Здоровье и метрики](observability.md) —
   то, что нужно API в продакшене поверх ядра (с 1.1).
+- [База данных](database.md), [Шаблоны](views.md), [Кэш](cache.md), [HTTP-клиент](http-client.md) —
+  подключение PDO или Doctrine DBAL, Twig или Latte, кэша PSR-16 и клиента PSR-18 (с 1.2).
 - [Стабильность API](api.md) фиксирует, что покрывает семантическое версионирование с 1.0.
 
 Исходники, issue и бенчмарки: [github.com/AloneCoder/keel](https://github.com/AloneCoder/keel).

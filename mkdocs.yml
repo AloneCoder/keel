@@ -60,6 +60,11 @@ plugins:
             Authentication and rate limiting: Аутентификация и лимиты
             OpenAPI: OpenAPI
             Health and metrics: Здоровье и метрики
+            Integrations: Интеграции
+            Database: База данных
+            Templates: Шаблоны
+            Cache: Кэш
+            HTTP client: HTTP-клиент
 nav:
   - Overview: index.md
   - Design:
@@ -78,3 +83,8 @@ nav:
       - Authentication and rate limiting: auth.md
       - OpenAPI: openapi.md
       - Health and metrics: observability.md
+  - Integrations:
+      - Database: database.md
+      - Templates: views.md
+      - Cache: cache.md
+      - HTTP client: http-client.md

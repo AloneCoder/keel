@@ -19,6 +19,10 @@ a new major version, with a deprecation in the previous minor where feasible.
 | RateLimit (1.1) | `Attribute\RateLimit`, `RateLimiter`, `RateLimitResult`, `RateLimitGuard`, `CounterStorage` and its implementations |
 | Health, Metrics (1.1) | `HealthCheck`, `HealthResult`, `HealthStatus`, `HealthConfig`, `HealthMiddleware`; `Registry`, `MetricsStorage` and its implementations, `MetricsConfig`, `MetricsMiddleware` |
 | OpenAPI (1.1) | the `Attribute\*` classes, `OpenApiConfig`, `Generator`, `SchemaBuilder`, `OpenApiMiddleware` |
+| Database (1.2) | `PdoConfig`, `PdoProvider`, `PdoCheck`, `DbalConfig`, `DbalProvider`, `DbalCheck` |
+| View (1.2) | `ViewRenderer`, `TwigConfig`, `TwigProvider`, `TwigRenderer`, `LatteConfig`, `LatteProvider`, `LatteRenderer` |
+| Cache (1.2) | `CacheConfig`, `CacheProvider`, `ArrayCache`, `ApcuCache`, `FileCache`, `InvalidKeyException` |
+| HttpClient (1.2) | `HttpClientConfig`, `HttpClientProvider`, `CurlClient`, `NetworkException`, `RequestException` |
 
 **Stable formats.** The Problem Details JSON shape, the `errors` message format `"field: message"`,
 the `Set-Cookie` attributes of sessions, the console command names and arguments, the health
@@ -26,7 +30,8 @@ report shape, the metric names and labels of `MetricsMiddleware`, the HMAC signi
 The OpenAPI document is a derived artifact: a minor release may describe the API more precisely.
 
 **Not covered.** Anything marked `@internal` (parsers, compilers, matchers, the reflection planner,
-`AppBuilder`, `ErrorPage`, `DocTypes`, generator base classes), the generated cache files (`container.php`,
+`AppBuilder`, `ErrorPage`, `DocTypes`, generator base classes), `AbstractCache` as a base class
+for third-party drivers, the on-disk format of `FileCache` entries, the generated cache files (`container.php`,
 `routes.php`, `discovery.php`, `preload.php`: rebuild them with `keel:compile` after every upgrade),
 the HTML of the error page, log line wording, and benchmark scripts.
 

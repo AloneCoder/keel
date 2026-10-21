@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
+## [1.2.0] - 2026-10-21
+
+Integrations: the libraries an application reaches for next, wired as providers with typed
+configs and documented for worker mode. All optional, nothing new is loaded unless a provider
+is listed in `ServicesConfig`.
+
+### Added
+
+- **Database** (`Keel\Database`): `PdoProvider` + `PdoConfig` (shared `\PDO` with exception
+  mode, assoc fetches, native prepares) and `DbalProvider` + `DbalConfig` (`fromUrl()`,
+  Doctrine DBAL 4), each with a readiness check tagged `keel.health` (`PdoCheck`, `DbalCheck`;
+  the latter flags a transaction left open).
+- **Templates** (`Keel\View`): `ViewRenderer`, `TwigProvider` + `TwigConfig`, `LatteProvider`
+  + `LatteConfig`.
+- **Cache** (`Keel\Cache`): PSR-16 `CacheProvider` + `CacheConfig` with `ApcuCache`,
+  `FileCache` and `ArrayCache`; driver `auto` picks APCu when loaded, else files.
+- **HTTP client** (`Keel\HttpClient`): PSR-18 `CurlClient` + `HttpClientConfig` (timeouts,
+  redirects, TLS, default headers, proxy, per-worker handle reuse), `HttpClientProvider`,
+  `NetworkException` and `RequestException`.
+- `psr/simple-cache` and `psr/http-client` are now required (interfaces only); `doctrine/dbal`,
+  `twig/twig`, `latte/latte`, `ext-apcu` and `ext-curl` are suggested.
+- Documentation pages for database, templates, cache and HTTP client in English and Russian.
+
 ## [1.1.0] - 2026-10-21
 
 What a production API needs on top of the core. Backward compatible with 1.0; route caches

@@ -32,7 +32,12 @@
     "suggest": {
         "symfony/console": "Console runtime and keel:* commands (any 7.3+ or 8.x)",
         "monolog/monolog": "PSR-3 logger implementation",
-        "spiral/roadrunner-http": "RoadRunner runtime adapter"
+        "spiral/roadrunner-http": "RoadRunner runtime adapter",
+        "doctrine/dbal": "Keel\\Database\\DbalProvider",
+        "twig/twig": "Keel\\View\\TwigProvider",
+        "latte/latte": "Keel\\View\\LatteProvider",
+        "ext-apcu": "Shared cache, rate-limit counters and metrics across workers",
+        "ext-curl": "Keel\\HttpClient\\CurlClient"
     },
     "autoload": {
         "psr-4": {
@@ -63,7 +68,7 @@
     "prefer-stable": true,
     "extra": {
         "branch-alias": {
-            "dev-main": "1.1.x-dev"
+            "dev-main": "1.2.x-dev"
         }
     },
     "replace": {

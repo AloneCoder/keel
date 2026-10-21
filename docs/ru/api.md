@@ -19,12 +19,17 @@
 | RateLimit (1.1) | `Attribute\RateLimit`, `RateLimiter`, `RateLimitResult`, `RateLimitGuard`, `CounterStorage` и его реализации |
 | Health, Metrics (1.1) | `HealthCheck`, `HealthResult`, `HealthStatus`, `HealthConfig`, `HealthMiddleware`; `Registry`, `MetricsStorage` и его реализации, `MetricsConfig`, `MetricsMiddleware` |
 | OpenAPI (1.1) | классы `Attribute\*`, `OpenApiConfig`, `Generator`, `SchemaBuilder`, `OpenApiMiddleware` |
+| Database (1.2) | `PdoConfig`, `PdoProvider`, `PdoCheck`, `DbalConfig`, `DbalProvider`, `DbalCheck` |
+| View (1.2) | `ViewRenderer`, `TwigConfig`, `TwigProvider`, `TwigRenderer`, `LatteConfig`, `LatteProvider`, `LatteRenderer` |
+| Cache (1.2) | `CacheConfig`, `CacheProvider`, `ArrayCache`, `ApcuCache`, `FileCache`, `InvalidKeyException` |
+| HttpClient (1.2) | `HttpClientConfig`, `HttpClientProvider`, `CurlClient`, `NetworkException`, `RequestException` |
 
 **Стабильные форматы.** Форма JSON Problem Details, формат сообщений `errors` вида `"поле: текст"`,
 атрибуты `Set-Cookie` сессий, имена и аргументы консольных команд.
 
 **Не покрывается.** Всё с `@internal` (парсеры, компиляторы, матчеры, планировщик рефлексии,
-`AppBuilder`, `ErrorPage`, `DocTypes`, базовые классы генераторов), сгенерированные файлы кэшей
+`AppBuilder`, `ErrorPage`, `DocTypes`, базовые классы генераторов), `AbstractCache` как база для
+сторонних драйверов, формат файлов `FileCache` на диске, сгенерированные файлы кэшей
 (`container.php`, `routes.php`, `discovery.php`, `preload.php`: пересобирайте их `keel:compile`
 после каждого обновления), HTML страницы ошибки, формулировки строк лога и скрипты бенчмарков.
 

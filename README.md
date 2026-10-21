@@ -6,7 +6,7 @@ A small, worker-first PHP micro-framework: PSR-7/11/14/15/17 all the way, attrib
 routing with scoped discovery, a compiled container and router, and the same code running
 under php-fpm, FrankenPHP worker mode and RoadRunner.
 
-Status: 1.1.0, API frozen under semantic versioning. Documentation site: https://alonecoder.github.io/keel/ Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md). See the roadmap in the design document.
+Status: 1.2.0, API frozen under semantic versioning. Documentation site: https://alonecoder.github.io/keel/ Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md). See the roadmap in the design document.
 
 - [Landscape analysis](docs/en/analysis.md) · [по-русски](docs/ru/analysis.md)
 - [Design decisions and roadmap](docs/en/design.md) · [по-русски](docs/ru/design.md)
@@ -20,6 +20,7 @@ Status: 1.1.0, API frozen under semantic versioning. Documentation site: https:/
 - [Authentication and rate limiting](docs/en/auth.md) · [по-русски](docs/ru/auth.md)
 - [OpenAPI](docs/en/openapi.md) · [по-русски](docs/ru/openapi.md)
 - [Health and metrics](docs/en/observability.md) · [по-русски](docs/ru/observability.md)
+- [Database](docs/en/database.md), [Templates](docs/en/views.md), [Cache](docs/en/cache.md), [HTTP client](docs/en/http-client.md) · [по-русски](docs/ru/database.md)
 - [API stability](docs/en/api.md) · [по-русски](docs/ru/api.md)
 
 Try the example:
@@ -80,8 +81,9 @@ and `terminate()`.
 
 1.0 closed the core; 1.1 added what a production API needs: authentication (`#[Auth]`, bearer,
 API key, HMAC), `#[RateLimit]`, health endpoints, Prometheus metrics, an OpenAPI 3.1 document
-derived from the code, and `keel:serve` for FrankenPHP worker mode in development. Next (1.2):
-integration pages and providers for Doctrine DBAL, Twig/Latte, PSR-16 caches and PSR-18 clients,
-driven by feedback from real projects. Queues and schedulers stay out of scope.
+derived from the code, and `keel:serve` for FrankenPHP worker mode in development. 1.2 wired the
+usual neighbours: PDO or Doctrine DBAL with health checks, Twig or Latte, a dependency-free PSR-16
+cache and a PSR-18 client on curl. Next: feedback from real projects decides; queues and
+schedulers stay out of scope.
 
 License: MIT.
