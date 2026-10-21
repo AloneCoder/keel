@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
+## [1.1.0] - 2026-10-21
+
+What a production API needs on top of the core. Backward compatible with 1.0; route caches
+written by 1.0 still load.
+
+### Added
+
+- **Auth** (`Keel\Auth`): `Principal`/`Identity`, `Authenticator` with `BearerTokenAuthenticator`,
+  `ApiKeyAuthenticator` and `HmacAuthenticator` (signed requests with a replay window),
+  `PrincipalResolver`/`HmacSecrets` for the application side, `AuthConfig`, optional global
+  `AuthMiddleware`, and `#[Auth('role', ...)]` which adds `AuthGuard` to the route: 401 with
+  `WWW-Authenticate`, 403 on missing roles. Handlers receive `Principal` by type.
+- **Rate limiting** (`Keel\RateLimit`): `#[RateLimit(limit, window, by: 'ip'|'principal')]`
+  adding `RateLimitGuard`, fixed windows, `RateLimit-*` headers, 429 with `Retry-After`,
+  `CounterStorage` with APCu and in-memory implementations; `TooManyRequestsException`.
+- **Health** (`Keel\Health`): `HealthCheck` services tagged `keel.health`, `HealthMiddleware`
+  serving readiness (`/health`, 503 when a check is down) and liveness (`/health/live`).
+- **Metrics** (`Keel\Metrics`): `Registry` with counters, gauges and histograms rendered in the
+  Prometheus text format, `MetricsStorage` (APCu shared across workers, or in-memory),
+  `MetricsMiddleware` recording `http_requests_total` and `http_request_duration_seconds` per
+  route pattern and serving `/metrics`.
+- **OpenAPI** (`Keel\OpenApi`): `Generator` deriving an OpenAPI 3.1 document from routes, DTOs,
+  validation rules, `#[Status]`, return types, `#[Auth]` and `#[RateLimit]`; `#[Operation]`,
+  `#[Response]`, `#[Field]`, `#[Hidden]` for what the code cannot say; `OpenApiMiddleware`
+  serving the JSON and an HTML reference (Scalar); `keel:openapi [--output]`.
+- **Routing**: `RouteOption` and `MiddlewareProvider` attribute interfaces, `Route::$options`
+  and `Route::option()`, so extension attributes travel with the route through the cache.
+- `keel:serve`: development server on PHP's built-in server or FrankenPHP (`--frankenphp`,
+  `--worker`, `--watch` restarting workers on changes in `src/`, `config/`, `.env`).
+- `HttpException::reasonPhrase()` knows the 2xx/3xx phrases.
+- `SECURITY.md`, `CONTRIBUTING.md`, issue and pull request templates; `tests/Security` covers
+  credential forgery, HMAC replay and rate-limit evasion.
+- Documentation pages for authentication, OpenAPI and observability in English and Russian.
+
 ## [1.0.0] - 2026-10-21
 
 The public API is frozen: see docs/en/api.md for what semantic versioning covers.

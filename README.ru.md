@@ -6,7 +6,7 @@
 атрибутах с ограниченным discovery, компилируемые контейнер и роутер, и один и тот же код
 под php-fpm, FrankenPHP worker mode и RoadRunner.
 
-Статус: 1.0.0, API заморожен под семантическое версионирование. Сайт документации: https://alonecoder.github.io/keel/ru/ Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md). Дорожная карта — в документе с решениями.
+Статус: 1.1.0, API заморожен под семантическое версионирование. Сайт документации: https://alonecoder.github.io/keel/ru/ Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md). Дорожная карта — в документе с решениями.
 
 - [Анализ рынка](docs/ru/analysis.md) · [English](docs/en/analysis.md)
 - [Проектные решения и дорожная карта](docs/ru/design.md) · [English](docs/en/design.md)
@@ -17,6 +17,9 @@
 - [Приложение: конфиг, discovery, события, консоль](docs/ru/app.md) · [English](docs/en/app.md)
 - [Тестирование](docs/ru/testing.md) · [English](docs/en/testing.md)
 - [Сессии и подписанные cookie](docs/ru/session.md) · [English](docs/en/session.md)
+- [Аутентификация и лимиты](docs/ru/auth.md) · [English](docs/en/auth.md)
+- [OpenAPI](docs/ru/openapi.md) · [English](docs/en/openapi.md)
+- [Здоровье и метрики](docs/ru/observability.md) · [English](docs/en/observability.md)
 - [Стабильность API](docs/ru/api.md) · [English](docs/en/api.md)
 
 Попробовать пример:
@@ -75,8 +78,10 @@ HttpKernel и `terminate()`.
 
 ## Дорожная карта
 
-Этапы M0–M5 из [документа с решениями](docs/ru/design.md) закрыты. Дальше: пакеты по
-компонентам (`keel/container`, `keel/router`), HTML-страница ошибки для debug-режима,
-эксперимент с рантаймом на Fibers и обратная связь от реальных проектов до 1.0.
+1.0 закрыл ядро; 1.1 добавил то, что нужно API в продакшене: аутентификацию (`#[Auth]`, bearer,
+API-ключ, HMAC), `#[RateLimit]`, эндпоинты здоровья, метрики Prometheus, документ OpenAPI 3.1,
+выводимый из кода, и `keel:serve` для worker mode FrankenPHP в разработке. Дальше (1.2): страницы
+интеграций и провайдеры для Doctrine DBAL, Twig/Latte, кэшей PSR-16 и клиентов PSR-18 по
+обратной связи от реальных проектов. Очереди и планировщик остаются за рамками.
 
 Лицензия: MIT.
