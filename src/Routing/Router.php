@@ -14,12 +14,11 @@ final class Router
 {
     private readonly Matcher $matcher;
 
-    private readonly UrlGenerator $generator;
+    private ?UrlGenerator $generator = null;
 
     public function __construct(public readonly CompiledRoutes $compiled)
     {
         $this->matcher = new Matcher($compiled);
-        $this->generator = new UrlGenerator($compiled);
     }
 
     /**
@@ -83,7 +82,7 @@ final class Router
      */
     public function generate(string $name, array $params = []): string
     {
-        return $this->generator->generate($name, $params);
+        return ($this->generator ??= new UrlGenerator($this->compiled))->generate($name, $params);
     }
 
     /** @return list<Route> */

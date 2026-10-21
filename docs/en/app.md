@@ -39,6 +39,11 @@ exit(ConsoleFactory::create(App::boot(dirname(__DIR__)))->run());
    environment, so several apps can live in one process.
 6. `Kernel` with the middleware from `HttpConfig`.
 
+In production with warm caches boot takes the short path: config objects, the route cache,
+the compiled container and the listener list from the discovery cache. `Definitions`, the
+scanner, the discovery classes and reflection are never loaded; `keel:compile` rebuilds all
+of it in a separate process.
+
 Production caches do not refresh themselves: after a deploy run `bin/console keel:compile`
 or delete `var/cache/<env>/`. In debug only discovery is cached, validated by file count
 and newest mtime.

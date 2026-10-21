@@ -46,6 +46,10 @@ Reproduce with `cd benchmarks && composer install && php -d opcache.enable_cli=1
 | Slim 4.15 (closure routes, no container) | 5.9 | 4.8 | 206 000 | 0.07 MB |
 | Symfony 8.1 MicroKernel (FrameworkBundle, `#[Route]`) | 29.5 | 31.0 | 32 000 | 0.52 MB |
 
+Memory: a production boot loads 37 files and allocates about 90 KB of heap (opcache on),
+and the kernel allocates nothing that survives a request: 2000 requests in a row add 0 bytes.
+Measure with `php -d opcache.enable_cli=1 memory.php` and `memory-classes.php` in `benchmarks/`.
+
 Keel does more work per request than the Slim app in this table (attribute controller,
 argument resolution with type casting, Problem Details handler, container-resolved
 middleware) at the same cost. Symfony's number includes its full HttpKernel event cycle

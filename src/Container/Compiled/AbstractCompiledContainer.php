@@ -47,7 +47,7 @@ abstract class AbstractCompiledContainer implements ContainerInterface
     /** @var array<string, Definition> */
     private array $autowired = [];
 
-    private readonly Instantiator $instantiator;
+    private ?Instantiator $instantiator;
 
     /**
      * @param array<string, object> $instances pre-built objects for every id in INSTANCE_IDS
@@ -68,7 +68,8 @@ abstract class AbstractCompiledContainer implements ContainerInterface
         $this->instances = $instances;
         $this->instances[PsrContainerInterface::class] = $this;
         $this->instances[ContainerInterface::class] = $this;
-        $this->instantiator = $instantiator ?? new Instantiator();
+        // Reflection machinery is loaded only if a class unknown at compile time is requested.
+        $this->instantiator = $instantiator;
     }
 
     public function get(string $id): mixed
@@ -103,7 +104,7 @@ abstract class AbstractCompiledContainer implements ContainerInterface
 
         $this->enter($id);
         try {
-            $service = $this->instantiator->create($definition, $this);
+            $service = ($this->instantiator ??= new Instantiator())->create($definition, $this);
         } finally {
             unset($this->resolving[$id]);
         }

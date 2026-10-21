@@ -34,7 +34,10 @@ use Psr\EventDispatcher\ListenerProviderInterface;
  *   src/           scanned for controllers, services with container attributes, listeners, commands
  *   var/cache/ENV  discovery.php, routes.php, container.php (used in production, rebuilt by keel:compile)
  *
- * In debug mode nothing is cached except discovery (validated against file mtimes).
+ * Production with warm caches is the fast path: config objects, the route cache, the compiled
+ * container and the listener list from the discovery cache. No reflection, no definitions,
+ * no scanner. Everything else (debug, missing caches, a $configure closure) goes through the
+ * full assembly, which also writes the caches when not in debug mode.
  */
 final class App
 {
@@ -43,72 +46,36 @@ final class App
     /**
      * @param array<class-string, object> $configs
      * @param list<class-string>          $controllers
+     * @param array<string, class-string> $commands console command name => class
      */
     private function __construct(
         public readonly string $projectDir,
         public readonly Env $env,
         public readonly AppConfig $config,
         public readonly array $configs,
-        public readonly Definitions $definitions,
         public readonly ContainerInterface $container,
         public readonly Router $router,
         public readonly Kernel $kernel,
-        public readonly Discoverer $discoverer,
         public readonly array $controllers,
+        private readonly array $commands,
     ) {}
 
     /**
-     * @param (\Closure(Definitions, Env): void)|null $configure last-minute definitions, mostly for tests
+     * @param (\Closure(Definitions, Env): void)|null $configure last-minute definitions for debug mode and tests;
+     *                                                           forces the full assembly
      */
     public static function boot(string $projectDir, ?Env $env = null, ?\Closure $configure = null): self
     {
         $projectDir = rtrim($projectDir, '/');
         $env ??= self::envFor($projectDir);
-
-        $configs = new ConfigLoader()->load($projectDir . '/config', $env, $projectDir);
-        $config = self::configOf($configs, AppConfig::class) ?? AppConfig::fromEnv($projectDir, $env);
-        $http = self::configOf($configs, HttpConfig::class) ?? new HttpConfig();
-        $discoveryConfig = self::configOf($configs, DiscoveryConfig::class) ?? DiscoveryConfig::forProject($projectDir);
-        $services = self::configOf($configs, ServicesConfig::class) ?? new ServicesConfig();
-        $configs += [
-            AppConfig::class => $config,
-            HttpConfig::class => $http,
-            DiscoveryConfig::class => $discoveryConfig,
-            ServicesConfig::class => $services,
-        ];
+        [$config, $configs] = self::configs($projectDir, $env);
         $cacheDir = $config->cacheDir();
 
-        $discoverer = self::discoverer($discoveryConfig, $cacheDir, $config->debug);
-        $discoverer->run();
-        $controllers = $discoverer->get(RouteDiscovery::class)->controllers();
-
-        $definitions = new Definitions();
-        $definitions->instance(Env::class, $env);
-        foreach ($configs as $class => $object) {
-            $definitions->instance($class, $object);
+        if (!$config->debug && $configure === null && self::cachesExist($cacheDir)) {
+            return self::fromCaches($projectDir, $env, $config, $configs, $cacheDir);
         }
-        foreach ($services->providers as $provider) {
-            $definitions->load(new $provider());
-        }
-        $discoverer->get(ServiceDiscovery::class)->register($definitions);
-        if ($definitions->definition(ListenerProvider::class) === null) {
-            $definitions->set(ListenerProvider::class)->alias(ListenerProviderInterface::class);
-        }
-        if ($definitions->definition(EventDispatcher::class) === null) {
-            $definitions->set(EventDispatcher::class)->alias(EventDispatcherInterface::class);
-        }
-        Kernel::registerDefaults($definitions);
-        $configure?->__invoke($definitions, $env);
 
-        $router = self::router($controllers, $cacheDir, $config->debug);
-        $definitions->instance(Router::class, $router);
-
-        $container = self::container($definitions, $cacheDir, $config);
-        $discoverer->get(ListenerDiscovery::class)->register($container->get(ListenerProvider::class));
-
-        $kernel = new Kernel($container, $router, $http->middleware, $config->debug);
-
-        return new self($projectDir, $env, $config, $configs, $definitions, $container, $router, $kernel, $discoverer, $controllers);
+        return self::assemble($projectDir, $env, $config, $configs, $cacheDir, $configure);
     }
 
     public function run(): int
@@ -124,15 +91,14 @@ final class App
     public function compile(): array
     {
         $cacheDir = $this->config->cacheDir();
+        @unlink($cacheDir . '/discovery.php');
 
-        $this->discoverer->clearCache();
-        $discoverer = self::discoverer($this->configs[DiscoveryConfig::class] instanceof DiscoveryConfig
-            ? $this->configs[DiscoveryConfig::class]
-            : DiscoveryConfig::forProject($this->projectDir), $cacheDir, true);
-        $discoverer->run();
-
-        Router::fromControllers(...$discoverer->get(RouteDiscovery::class)->controllers())->write($cacheDir . '/routes.php');
-        new Compiler($this->definitions)->write($cacheDir . '/container.php', self::compiledClassName($this->config), self::COMPILED_NAMESPACE);
+        [$definitions, $discoverer] = self::definitions($this->projectDir, $this->env, $this->configs, $cacheDir, true, null);
+        $controllers = $discoverer->get(RouteDiscovery::class)->controllers();
+        $router = Router::fromControllers(...$controllers);
+        $router->write($cacheDir . '/routes.php');
+        $definitions->instance(Router::class, $router);
+        new Compiler($definitions)->write($cacheDir . '/container.php', self::compiledClassName($this->config), self::COMPILED_NAMESPACE);
 
         return [$cacheDir . '/discovery.php', $cacheDir . '/routes.php', $cacheDir . '/container.php'];
     }
@@ -156,7 +122,158 @@ final class App
     /** @return array<string, class-string> discovered console commands, name => class */
     public function commands(): array
     {
-        return $this->discoverer->get(CommandDiscovery::class)->commands();
+        return $this->commands;
+    }
+
+    /**
+     * The class name embeds project and environment, so several apps can live in one process.
+     */
+    public static function compiledClassName(AppConfig $config): string
+    {
+        return 'KeelCompiledContainer_' . substr(md5($config->projectDir . '|' . $config->env), 0, 12);
+    }
+
+    private static function cachesExist(string $cacheDir): bool
+    {
+        return is_file($cacheDir . '/discovery.php') && is_file($cacheDir . '/routes.php') && is_file($cacheDir . '/container.php');
+    }
+
+    /**
+     * @param array<class-string, object> $configs
+     */
+    private static function fromCaches(string $projectDir, Env $env, AppConfig $config, array $configs, string $cacheDir): self
+    {
+        $discovery = self::discoveryCache($cacheDir . '/discovery.php');
+        $router = Router::fromCache($cacheDir . '/routes.php');
+        $instances = [Env::class => $env] + $configs + [Router::class => $router];
+        $container = self::compiledContainer($instances, $cacheDir, $config);
+
+        self::registerListeners($container->get(ListenerProvider::class), $discovery[ListenerDiscovery::class] ?? []);
+        $http = $configs[HttpConfig::class];
+        $kernel = new Kernel($container, $router, $http instanceof HttpConfig ? $http->middleware : [], false);
+
+        return new self(
+            $projectDir,
+            $env,
+            $config,
+            $configs,
+            $container,
+            $router,
+            $kernel,
+            self::classList($discovery[RouteDiscovery::class] ?? []),
+            self::commandMap($discovery[CommandDiscovery::class] ?? []),
+        );
+    }
+
+    /**
+     * @param array<class-string, object>              $configs
+     * @param (\Closure(Definitions, Env): void)|null $configure
+     */
+    private static function assemble(
+        string $projectDir,
+        Env $env,
+        AppConfig $config,
+        array $configs,
+        string $cacheDir,
+        ?\Closure $configure,
+    ): self {
+        [$definitions, $discoverer] = self::definitions($projectDir, $env, $configs, $cacheDir, $config->debug, $configure);
+        $controllers = $discoverer->get(RouteDiscovery::class)->controllers();
+
+        $router = self::router($controllers, $cacheDir, $config->debug);
+        $definitions->instance(Router::class, $router);
+
+        if ($config->debug) {
+            $container = new Container($definitions);
+        } else {
+            $cache = $cacheDir . '/container.php';
+            if (!is_file($cache)) {
+                new Compiler($definitions)->write($cache, self::compiledClassName($config), self::COMPILED_NAMESPACE);
+            }
+            $container = self::compiledContainer($definitions->instances(), $cacheDir, $config);
+        }
+
+        $discoverer->get(ListenerDiscovery::class)->register($container->get(ListenerProvider::class));
+        $http = $configs[HttpConfig::class];
+        $kernel = new Kernel($container, $router, $http instanceof HttpConfig ? $http->middleware : [], $config->debug);
+
+        return new self(
+            $projectDir,
+            $env,
+            $config,
+            $configs,
+            $container,
+            $router,
+            $kernel,
+            $controllers,
+            $discoverer->get(CommandDiscovery::class)->commands(),
+        );
+    }
+
+    /**
+     * Runs discovery and builds the definitions: env, configs, providers, discovered services,
+     * events, kernel defaults, then the $configure closure.
+     *
+     * @param array<class-string, object>              $configs
+     * @param (\Closure(Definitions, Env): void)|null $configure
+     *
+     * @return array{0: Definitions, 1: Discoverer}
+     */
+    private static function definitions(
+        string $projectDir,
+        Env $env,
+        array $configs,
+        string $cacheDir,
+        bool $checkFreshness,
+        ?\Closure $configure,
+    ): array {
+        $discoveryConfig = $configs[DiscoveryConfig::class];
+        $discoverer = self::discoverer(
+            $discoveryConfig instanceof DiscoveryConfig ? $discoveryConfig : DiscoveryConfig::forProject($projectDir),
+            $cacheDir,
+            $checkFreshness,
+        );
+        $discoverer->run();
+
+        $definitions = new Definitions();
+        $definitions->instance(Env::class, $env);
+        foreach ($configs as $class => $object) {
+            $definitions->instance($class, $object);
+        }
+        $services = $configs[ServicesConfig::class];
+        if ($services instanceof ServicesConfig) {
+            foreach ($services->providers as $provider) {
+                $definitions->load(new $provider());
+            }
+        }
+        $discoverer->get(ServiceDiscovery::class)->register($definitions);
+        if ($definitions->definition(ListenerProvider::class) === null) {
+            $definitions->set(ListenerProvider::class)->alias(ListenerProviderInterface::class);
+        }
+        if ($definitions->definition(EventDispatcher::class) === null) {
+            $definitions->set(EventDispatcher::class)->alias(EventDispatcherInterface::class);
+        }
+        Kernel::registerDefaults($definitions);
+        $configure?->__invoke($definitions, $env);
+
+        return [$definitions, $discoverer];
+    }
+
+    /**
+     * @return array{0: AppConfig, 1: array<class-string, object>}
+     */
+    private static function configs(string $projectDir, Env $env): array
+    {
+        $configs = new ConfigLoader()->load($projectDir . '/config', $env, $projectDir);
+        $config = self::configOf($configs, AppConfig::class) ?? AppConfig::fromEnv($projectDir, $env);
+        $configs += [
+            AppConfig::class => $config,
+            HttpConfig::class => self::configOf($configs, HttpConfig::class) ?? new HttpConfig(),
+            DiscoveryConfig::class => self::configOf($configs, DiscoveryConfig::class) ?? DiscoveryConfig::forProject($projectDir),
+            ServicesConfig::class => self::configOf($configs, ServicesConfig::class) ?? new ServicesConfig(),
+        ];
+
+        return [$config, $configs];
     }
 
     private static function envFor(string $projectDir): Env
@@ -182,9 +299,9 @@ final class App
         return $object instanceof $class ? $object : null;
     }
 
-    private static function discoverer(DiscoveryConfig $config, string $cacheDir, bool $debug): Discoverer
+    private static function discoverer(DiscoveryConfig $config, string $cacheDir, bool $checkFreshness): Discoverer
     {
-        return new Discoverer($config->paths, $cacheDir . '/discovery.php', checkFreshness: $debug)
+        return new Discoverer($config->paths, $cacheDir . '/discovery.php', checkFreshness: $checkFreshness)
             ->add(new RouteDiscovery())
             ->add(new ServiceDiscovery())
             ->add(new ListenerDiscovery())
@@ -210,32 +327,20 @@ final class App
         return $router;
     }
 
-    private static function container(Definitions $definitions, string $cacheDir, AppConfig $config): ContainerInterface
+    /**
+     * @param array<string, object> $instances
+     */
+    private static function compiledContainer(array $instances, string $cacheDir, AppConfig $config): AbstractCompiledContainer
     {
-        if ($config->debug) {
-            return new Container($definitions);
-        }
-
         $cache = $cacheDir . '/container.php';
         $className = self::compiledClassName($config);
         if (!class_exists(self::COMPILED_NAMESPACE . '\\' . $className, false)) {
-            if (!is_file($cache)) {
-                new Compiler($definitions)->write($cache, $className, self::COMPILED_NAMESPACE);
-            }
             require $cache;
         }
 
         $fqcn = self::compiledClass($className, $cache);
 
-        return new $fqcn($definitions->instances());
-    }
-
-    /**
-     * The class name embeds project and environment, so several apps can live in one process.
-     */
-    public static function compiledClassName(AppConfig $config): string
-    {
-        return 'KeelCompiledContainer_' . substr(md5($config->projectDir . '|' . $config->env), 0, 12);
+        return new $fqcn($instances);
     }
 
     /**
@@ -249,5 +354,85 @@ final class App
         }
 
         return $fqcn;
+    }
+
+    /**
+     * Reads the discovery cache without instantiating the discoveries.
+     *
+     * @return array<string, array<mixed>> discovery class => result
+     */
+    private static function discoveryCache(string $file): array
+    {
+        /** @var mixed $data */
+        $data = require $file;
+        $results = is_array($data) ? ($data['results'] ?? null) : null;
+        if (!is_array($results)) {
+            throw new \RuntimeException(sprintf('Discovery cache "%s" is malformed; run keel:compile', $file));
+        }
+
+        $typed = [];
+        foreach ($results as $class => $result) {
+            if (is_string($class) && is_array($result)) {
+                $typed[$class] = $result;
+            }
+        }
+
+        return $typed;
+    }
+
+    /**
+     * @param array<mixed> $tuples class, method, event, priority
+     */
+    private static function registerListeners(ListenerProvider $provider, array $tuples): void
+    {
+        foreach ($tuples as $tuple) {
+            if (!is_array($tuple) || count($tuple) !== 4) {
+                continue;
+            }
+            [$class, $method, $event, $priority] = array_values($tuple);
+            if (is_string($class) && is_string($method) && is_string($event) && is_int($priority)) {
+                /** @var class-string $class */
+                /** @var class-string $event */
+                $provider->add($event, [$class, $method], $priority);
+            }
+        }
+    }
+
+    /**
+     * Cached class names are trusted; the classes load when first used.
+     *
+     * @param array<mixed> $values
+     *
+     * @return list<class-string>
+     */
+    private static function classList(array $values): array
+    {
+        $classes = [];
+        foreach ($values as $value) {
+            if (is_string($value)) {
+                /** @var class-string $value */
+                $classes[] = $value;
+            }
+        }
+
+        return $classes;
+    }
+
+    /**
+     * @param array<mixed> $values
+     *
+     * @return array<string, class-string>
+     */
+    private static function commandMap(array $values): array
+    {
+        $commands = [];
+        foreach ($values as $name => $class) {
+            if (is_string($name) && is_string($class)) {
+                /** @var class-string $class */
+                $commands[$name] = $class;
+            }
+        }
+
+        return $commands;
     }
 }

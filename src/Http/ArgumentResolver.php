@@ -34,11 +34,22 @@ final class ArgumentResolver
     /** @var array<string, list<array{0: int, 1: \ReflectionParameter, 2: string|null}>> per handler: source, parameter, class */
     private array $plans = [];
 
-    public function __construct(
-        private readonly ContainerInterface $container,
-        private readonly Hydrator $hydrator = new Hydrator(),
-        private readonly BodyParser $bodies = new BodyParser(),
-    ) {}
+    /** Created on first use, so GET-only workers never load the body parser. */
+    private ?Hydrator $hydrator = null;
+
+    private ?BodyParser $bodies = null;
+
+    public function __construct(private readonly ContainerInterface $container) {}
+
+    private function hydrator(): Hydrator
+    {
+        return $this->hydrator ??= new Hydrator();
+    }
+
+    private function bodies(): BodyParser
+    {
+        return $this->bodies ??= new BodyParser();
+    }
 
     /**
      * @return list<mixed>
@@ -105,7 +116,7 @@ final class ArgumentResolver
         $type = $parameter->getType();
 
         if (array_key_exists($name, $match->params)) {
-            return $this->hydrator->cast($match->params[$name], $parameter, $name);
+            return $this->hydrator()->cast($match->params[$name], $parameter, $name);
         }
 
         if ($class !== null && $this->container->has($class)) {
@@ -133,12 +144,12 @@ final class ArgumentResolver
         $query = $request->getQueryParams();
 
         if ($class !== null && class_exists($class)) {
-            return $this->hydrator->hydrate($class, $query);
+            return $this->hydrator()->hydrate($class, $query);
         }
 
         $name = $parameter->getName();
         if (array_key_exists($name, $query)) {
-            return $this->hydrator->cast($query[$name], $parameter, $name);
+            return $this->hydrator()->cast($query[$name], $parameter, $name);
         }
         if ($parameter->isDefaultValueAvailable()) {
             return $parameter->getDefaultValue();
@@ -152,10 +163,10 @@ final class ArgumentResolver
 
     private function fromBody(\ReflectionParameter $parameter, ?string $class, ServerRequestInterface $request): mixed
     {
-        $body = $this->bodies->parse($request);
+        $body = $this->bodies()->parse($request);
 
         if ($class !== null && class_exists($class)) {
-            return $this->hydrator->hydrate($class, $body);
+            return $this->hydrator()->hydrate($class, $body);
         }
 
         return $body;

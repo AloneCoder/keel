@@ -19,7 +19,9 @@ is based on [analysis.md](analysis.md).
   bounded scope and a cache.
 - Compilation of the container and routes into PHP files; in dev — runtime reflection without
   a cache.
-- A small core: target of 3–4 thousand lines and no more than five runtime dependencies.
+- A small core: target of 3–4 thousand lines and no more than five runtime dependencies. A
+  production boot loads only what answering needs; everything for building (discovery,
+  definitions, compiler, reflection) stays in `keel:compile`.
 - Performance on par with Symfony MicroKernel in FrankenPHP worker (reference from Tempest
   issue #2309: on the order of 25k rps on a simple JSON endpoint on a single machine).
 
