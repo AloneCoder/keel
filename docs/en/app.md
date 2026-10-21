@@ -128,13 +128,15 @@ final class LogProvider implements ServiceProvider
 
 `ConsoleFactory::create($app)` returns a Symfony Console Application with:
 
-- `keel:routes`: the route table;
+- `keel:routes`: the route table with middleware, `#[Auth]` roles and `#[RateLimit]` settings;
 - `keel:compile`: rebuild `discovery.php`, `routes.php`, `container.php`;
 - `keel:cache-clear`: remove them;
 - `keel:debug:container [filter]`: table of the services, aliases, parameters and instances the
   container is built from;
-- `keel:make:controller`, `keel:make:command`, `keel:make:middleware`, `keel:make:listener`:
-  class generators in the project namespace (from `composer.json`), never overwriting without `--force`;
+- `keel:make:controller`, `keel:make:command`, `keel:make:middleware`, `keel:make:listener`,
+  `keel:make:check` (a tagged health check), `keel:make:authenticator` (a `PrincipalResolver`, or
+  with `--scheme` a full `Authenticator`): class generators in the project namespace (from
+  `composer.json`), never overwriting without `--force`;
 - `keel:preload`: write `var/cache/<env>/preload.php` for `opcache.preload`: every file the
   application loads to boot and answer a request, in load order. With preloading those classes
   are linked once in opcache shared memory instead of once per php-fpm request or per worker;
