@@ -6,7 +6,7 @@
 атрибутах с ограниченным discovery, компилируемые контейнер и роутер, и один и тот же код
 под php-fpm, FrankenPHP worker mode и RoadRunner.
 
-Статус: 0.1.0, ядро целиком на месте. См. [CHANGELOG.md](CHANGELOG.md). Дорожная карта — в документе с решениями.
+Статус: 0.2.0, можно начинать реальный проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md). Дорожная карта — в документе с решениями.
 
 - [Анализ рынка](docs/ru/analysis.md) · [English](docs/en/analysis.md)
 - [Проектные решения и дорожная карта](docs/ru/design.md) · [English](docs/en/design.md)

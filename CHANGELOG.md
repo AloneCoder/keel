@@ -4,7 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-21
+
+Ready for a first real project: testing client, the middleware every API needs, validation,
+logging, an HTML error page, a leaner production boot and `keel/skeleton`.
+
+### Added
+
+- `Keel\Testing\TestClient` and `TestResponse`: in-memory requests through the kernel with fluent
+  PHPUnit assertions (status, headers, JSON subset and paths, Problem Details).
+- `CorsMiddleware` + `CorsConfig`, `RequestIdMiddleware`, `TrustedProxiesMiddleware` + `TrustedProxiesConfig`.
+- HTML error page for clients preferring `text/html`: exception chain, trace, redacted request and
+  "Copy as Markdown" in debug mode; status and title in production.
+- `Keel\Validation` rule attributes (`NotBlank`, `Length`, `Range`, `Count`, `Pattern`, `Email`,
+  `Url`, `Choice`) checked by the hydrator and reported in Problem Details `errors`.
+- `Keel\Log\StreamLogger` + `LoggerConfig`: dependency-free PSR-3 logger wired by `App::boot()`
+  unless the application registers its own `LoggerInterface`.
+- `keel:preload` writes an `opcache.preload` script from the files a request loads.
+- `keel/skeleton` project template (`composer create-project keel/skeleton my-app`).
 
 ### Changed
 
@@ -16,8 +33,6 @@ Until 1.0.0 minor versions may contain breaking changes.
 - `ExceptionHandlerMiddleware` takes the container and resolves the logger on the first server error.
 
 ### Added
-
-- `keel:preload` writes an `opcache.preload` script from the files a request loads.
 
 ## [0.1.0] - 2026-10-21
 
