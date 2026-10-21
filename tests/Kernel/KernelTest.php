@@ -7,6 +7,7 @@ namespace Keel\Tests\Kernel;
 use Keel\Container\Definitions;
 use Keel\Http\ArgumentResolver;
 use Keel\Kernel\DispatchHandler;
+use Keel\Kernel\ErrorPage;
 use Keel\Kernel\ExceptionHandlerMiddleware;
 use Keel\Kernel\Kernel;
 use Keel\Kernel\ProblemDetails;
@@ -27,6 +28,7 @@ use Psr\Log\LoggerInterface;
 #[CoversClass(DispatchHandler::class)]
 #[CoversClass(ExceptionHandlerMiddleware::class)]
 #[CoversClass(ProblemDetails::class)]
+#[CoversClass(ErrorPage::class)]
 #[CoversClass(ArgumentResolver::class)]
 final class KernelTest extends TestCase
 {
@@ -208,6 +210,32 @@ final class KernelTest extends TestCase
         self::assertSame('Something broke', $debug['detail']);
         self::assertIsArray($debug['exception']);
         self::assertSame(\RuntimeException::class, $debug['exception']['class']);
+    }
+
+    public function testBrowsersGetAnHtmlErrorPage(): void
+    {
+        $debug = $this->kernel(debug: true)->handle(new ServerRequest('GET', '/api/users/boom', ['Accept' => 'text/html,application/xhtml+xml,*/*;q=0.8', 'Authorization' => 'Bearer s3cret']));
+        self::assertSame(500, $debug->getStatusCode());
+        self::assertSame('text/html; charset=utf-8', $debug->getHeaderLine('Content-Type'));
+        $html = (string) $debug->getBody();
+        self::assertStringContainsString('<span>500</span> Internal Server Error', $html);
+        self::assertStringContainsString('Something broke', $html);
+        self::assertStringContainsString('RuntimeException', $html);
+        self::assertStringContainsString('Copy as Markdown', $html);
+        self::assertStringContainsString('## 500 Internal Server Error', $html, 'markdown export is embedded');
+        self::assertStringNotContainsString('s3cret', $html, 'secrets are redacted');
+
+        $prod = $this->kernel()->handle(new ServerRequest('GET', '/api/users/boom', ['Accept' => 'text/html']));
+        self::assertSame('text/html; charset=utf-8', $prod->getHeaderLine('Content-Type'));
+        self::assertStringNotContainsString('Something broke', (string) $prod->getBody());
+        self::assertStringNotContainsString('Copy as Markdown', (string) $prod->getBody());
+
+        $json = $this->kernel()->handle(new ServerRequest('GET', '/api/users/boom', ['Accept' => 'application/json, text/html']));
+        self::assertSame('application/problem+json', $json->getHeaderLine('Content-Type'), 'json listed first wins');
+
+        $notFound = $this->kernel()->handle(new ServerRequest('GET', '/nope', ['Accept' => 'text/html']));
+        self::assertSame(404, $notFound->getStatusCode());
+        self::assertStringContainsString('<span>404</span> Not Found', (string) $notFound->getBody());
     }
 
     public function testUnresolvableHandlerParameterIsConfigurationError(): void

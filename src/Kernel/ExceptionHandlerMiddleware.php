@@ -13,7 +13,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * Outermost middleware: converts every throwable into a Problem Details response.
+ * Outermost middleware: converts every throwable into a Problem Details response, as JSON
+ * (application/problem+json) or as an HTML page when the client prefers text/html.
  * Server errors (5xx) are logged; in debug mode the payload carries the exception.
  */
 final class ExceptionHandlerMiddleware implements MiddlewareInterface
@@ -48,7 +49,9 @@ final class ExceptionHandlerMiddleware implements MiddlewareInterface
             ]);
         }
 
-        $response = $this->responder->json($problem->body, $problem->status, 'application/problem+json');
+        $response = ErrorPage::prefersHtml($request)
+            ? $this->responder->text(ErrorPage::render($problem, $exception, $request, $this->debug), $problem->status, 'text/html; charset=utf-8')
+            : $this->responder->json($problem->body, $problem->status, 'application/problem+json');
         foreach ($problem->headers as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
