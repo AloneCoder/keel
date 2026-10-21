@@ -19,7 +19,8 @@ final class ApiKeyAuthenticator implements Authenticator
 
     public function authenticate(ServerRequestInterface $request): ?Principal
     {
-        $key = trim($request->getHeaderLine($this->header));
+        // PSR-7 implementations trim header values; an empty header means no credentials.
+        $key = $request->getHeaderLine($this->header);
         if ($key === '') {
             return null;
         }
