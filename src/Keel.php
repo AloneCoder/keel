@@ -1,0 +1,17 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Keel;
+
+/**
+ * Framework identity: version and required runtime.
+ */
+final class Keel
+{
+    public const string VERSION = '0.1.0-dev';
+
+    public const int MIN_PHP_VERSION_ID = 80400;
+
+    private function __construct() {}
+}
