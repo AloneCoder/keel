@@ -1,0 +1,12 @@
+# RoadRunner configuration for the hello example (needs the rr binary):
+#   cd examples/hello && rr serve
+version: "3"
+server:
+  command: "php public/index.php"
+  env:
+    - KEEL_RUNTIME: roadrunner
+http:
+  address: 127.0.0.1:8080
+  pool:
+    num_workers: 2
+    max_jobs: 1000

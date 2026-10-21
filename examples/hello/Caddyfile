@@ -1,0 +1,17 @@
+# FrankenPHP worker mode for the hello example:
+#   frankenphp run --config examples/hello/Caddyfile
+# then curl http://127.0.0.1:8080/stats a few times and watch worker_hits grow while request_hits stays 1.
+{
+	frankenphp {
+		worker {
+			file ./public/index.php
+			num 2
+			env MAX_REQUESTS 1000
+		}
+	}
+}
+
+:8080 {
+	root * public
+	php_server
+}

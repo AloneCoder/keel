@@ -9,7 +9,7 @@ use Psr\Http\Message\ResponseInterface;
 /**
  * Sends a PSR-7 response through the SAPI (php-fpm, cli-server, FrankenPHP).
  */
-final class SapiEmitter
+final class SapiEmitter implements EmitterInterface
 {
     public function __construct(private readonly int $chunkSize = 8192) {}
 
