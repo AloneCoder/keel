@@ -6,8 +6,8 @@
     "homepage": "https://github.com/AloneCoder/keel",
     "require": {
         "php": ">=8.4",
-        "keel/router": "^0.3",
-        "keel/validation": "^0.3",
+        "keel/router": "^1.0",
+        "keel/validation": "^1.0",
         "psr/container": "^2.0",
         "psr/http-factory": "^1.1",
         "psr/http-message": "^2.0",
