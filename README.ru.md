@@ -6,7 +6,7 @@
 атрибутах с ограниченным discovery, компилируемые контейнер и роутер, и один и тот же код
 под php-fpm, FrankenPHP worker mode и RoadRunner.
 
-Статус: 0.2.0, можно начинать реальный проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md). Дорожная карта — в документе с решениями.
+Статус: 0.3.0. Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md). Дорожная карта — в документе с решениями.
 
 - [Анализ рынка](docs/ru/analysis.md) · [English](docs/en/analysis.md)
 - [Проектные решения и дорожная карта](docs/ru/design.md) · [English](docs/en/design.md)
@@ -34,6 +34,14 @@ composer test
 composer stan
 composer cs
 ```
+
+## Пакеты
+
+`keel/framework` — всё целиком. Четыре компонента публикуются и отдельно, как read-only срезы этого
+репозитория, которые фреймворк `replace`-ит: [keel/container](https://github.com/AloneCoder/keel-container),
+[keel/router](https://github.com/AloneCoder/keel-router), [keel/http](https://github.com/AloneCoder/keel-http)
+(зависит от router и validation) и [keel/validation](https://github.com/AloneCoder/keel-validation).
+Issue и pull request — сюда; `bin/split vX.Y.Z` пушит срезы.
 
 ## Бенчмарки
 

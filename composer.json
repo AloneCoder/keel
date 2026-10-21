@@ -43,7 +43,8 @@
         "test": "phpunit",
         "stan": "phpstan analyse",
         "cs": "php-cs-fixer fix --dry-run --diff",
-        "cs-fix": "php-cs-fixer fix"
+        "cs-fix": "php-cs-fixer fix",
+        "split": "bin/split"
     },
     "config": {
         "sort-packages": true
@@ -54,5 +55,11 @@
         "branch-alias": {
             "dev-main": "0.2.x-dev"
         }
+    },
+    "replace": {
+        "keel/container": "self.version",
+        "keel/router": "self.version",
+        "keel/http": "self.version",
+        "keel/validation": "self.version"
     }
 }

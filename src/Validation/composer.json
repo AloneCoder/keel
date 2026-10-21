@@ -1,0 +1,14 @@
+{
+    "name": "keel/validation",
+    "description": "Validation rule attributes (NotBlank, Length, Range, Count, Pattern, Email, Url, Choice). Part of the Keel framework, usable on its own.",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/AloneCoder/keel",
+    "require": {
+        "php": ">=8.4"
+    },
+    "autoload": {
+        "psr-4": { "Keel\\Validation\\": "" }
+    },
+    "minimum-stability": "stable"
+}

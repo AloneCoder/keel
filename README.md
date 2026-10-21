@@ -6,7 +6,7 @@ A small, worker-first PHP micro-framework: PSR-7/11/14/15/17 all the way, attrib
 routing with scoped discovery, a compiled container and router, and the same code running
 under php-fpm, FrankenPHP worker mode and RoadRunner.
 
-Status: 0.2.0, ready for a first real project. Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md). See the roadmap in the design document.
+Status: 0.3.0. Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md). See the roadmap in the design document.
 
 - [Landscape analysis](docs/en/analysis.md) · [по-русски](docs/ru/analysis.md)
 - [Design decisions and roadmap](docs/en/design.md) · [по-русски](docs/ru/design.md)
@@ -34,6 +34,14 @@ composer test
 composer stan
 composer cs
 ```
+
+## Packages
+
+`keel/framework` is the whole thing. Four components are also published on their own as read-only
+splits of this repository and are `replace`d by the framework: [keel/container](https://github.com/AloneCoder/keel-container),
+[keel/router](https://github.com/AloneCoder/keel-router), [keel/http](https://github.com/AloneCoder/keel-http)
+(depends on router and validation) and [keel/validation](https://github.com/AloneCoder/keel-validation).
+Issues and pull requests go here; `bin/split vX.Y.Z` pushes the splits.
 
 ## Benchmarks
 

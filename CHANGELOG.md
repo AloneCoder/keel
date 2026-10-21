@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
+## [0.3.0] - 2026-10-21
+
+### Added
+
+- `Keel\Session`: `Session` injected into handlers by type, `SessionConfig`, HMAC-signed cookies
+  (`CookieSigner`), cookie storage (data in the signed cookie), file storage (signed id in the cookie),
+  `ArrayStorage` for tests, `regenerate()` invalidating the previous id.
+- `ArgumentResolver` injects request attributes keyed by the parameter's class.
+- Console: `keel:make:controller`, `keel:make:command`, `keel:make:middleware`, `keel:make:listener`,
+  `keel:debug:container`.
+- Component packages split from the monorepo and replaced by `keel/framework`: `keel/container`,
+  `keel/router`, `keel/http`, `keel/validation` (`bin/split`).
+
 ## [0.2.0] - 2026-10-21
 
 Ready for a first real project: testing client, the middleware every API needs, validation,

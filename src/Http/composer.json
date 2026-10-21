@@ -1,0 +1,21 @@
+{
+    "name": "keel/http",
+    "description": "PSR-15 pipeline, HTTP exceptions, responder, argument resolver with DTO hydration and validation, CORS / request-id / trusted-proxies / method-override middleware, SAPI emitter. Part of the Keel framework.",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/AloneCoder/keel",
+    "require": {
+        "php": ">=8.4",
+        "keel/router": "^0.3",
+        "keel/validation": "^0.3",
+        "psr/container": "^2.0",
+        "psr/http-factory": "^1.1",
+        "psr/http-message": "^2.0",
+        "psr/http-server-handler": "^1.0",
+        "psr/http-server-middleware": "^1.0"
+    },
+    "autoload": {
+        "psr-4": { "Keel\\Http\\": "" }
+    },
+    "minimum-stability": "stable"
+}

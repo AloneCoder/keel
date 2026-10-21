@@ -1,0 +1,15 @@
+{
+    "name": "keel/container",
+    "description": "PSR-11 container with constructor autowiring, attributes, PHP 8.4 lazy objects, per-request reset and a compiler. Part of the Keel framework, usable on its own.",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/AloneCoder/keel",
+    "require": {
+        "php": ">=8.4",
+        "psr/container": "^2.0"
+    },
+    "autoload": {
+        "psr-4": { "Keel\\Container\\": "" }
+    },
+    "minimum-stability": "stable"
+}

@@ -1,0 +1,15 @@
+{
+    "name": "keel/router",
+    "description": "Attribute-based HTTP router with constraints, group-count regex matching, 405 handling, URL generation and a PHP-array cache. Part of the Keel framework, usable on its own.",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/AloneCoder/keel",
+    "require": {
+        "php": ">=8.4",
+        "psr/http-server-middleware": "^1.0"
+    },
+    "autoload": {
+        "psr-4": { "Keel\\Routing\\": "" }
+    },
+    "minimum-stability": "stable"
+}
