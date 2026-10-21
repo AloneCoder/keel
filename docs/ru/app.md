@@ -130,6 +130,10 @@ final class LogProvider implements ServiceProvider
 - `keel:routes` — таблица маршрутов;
 - `keel:compile` — пересобрать `discovery.php`, `routes.php`, `container.php`;
 - `keel:cache-clear` — удалить их;
+- `keel:debug:container [filter]` — таблица сервисов, алиасов, параметров и экземпляров, из
+  которых собирается контейнер;
+- `keel:make:controller`, `keel:make:command`, `keel:make:middleware`, `keel:make:listener` —
+  генераторы классов в namespace проекта (из `composer.json`), без перезаписи без `--force`;
 - `keel:preload` — записать `var/cache/<env>/preload.php` для `opcache.preload`: все файлы, которые
   приложение загружает на старте и при запросе, в порядке загрузки. С preload классы линкуются один
   раз в общей памяти opcache, а не в каждом процессе php-fpm и не в каждом воркере; особенно это

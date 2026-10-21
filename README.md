@@ -16,6 +16,7 @@ Status: 0.2.0, ready for a first real project. Start with `composer create-proje
 - [Runtimes: php-fpm, FrankenPHP, RoadRunner](docs/en/runtime.md) · [по-русски](docs/ru/runtime.md)
 - [Application: config, discovery, events, console](docs/en/app.md) · [по-русски](docs/ru/app.md)
 - [Testing](docs/en/testing.md) · [по-русски](docs/ru/testing.md)
+- [Sessions and signed cookies](docs/en/session.md) · [по-русски](docs/ru/session.md)
 
 Try the example:
 

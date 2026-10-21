@@ -15,7 +15,9 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * Resolves the arguments of a route handler, in this order per parameter:
  * the request / RouteMatch / Route by type, #[FromQuery], #[FromBody], a path placeholder
- * with the parameter's name (type-cast), a service from the container, the default value.
+ * with the parameter's name (type-cast), a request attribute keyed by the parameter's class
+ * (what SessionMiddleware and auth middleware leave behind), a service from the container,
+ * the default value.
  */
 final class ArgumentResolver
 {
@@ -117,6 +119,14 @@ final class ArgumentResolver
 
         if (array_key_exists($name, $match->params)) {
             return $this->hydrator()->cast($match->params[$name], $parameter, $name);
+        }
+
+        // Objects a middleware stored under their class name (Session, auth identity, ...).
+        if ($class !== null) {
+            $attribute = $request->getAttribute($class);
+            if ($attribute instanceof $class) {
+                return $attribute;
+            }
         }
 
         if ($class !== null && $this->container->has($class)) {

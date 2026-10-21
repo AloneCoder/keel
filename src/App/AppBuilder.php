@@ -89,6 +89,17 @@ final class AppBuilder
     }
 
     /**
+     * The definitions the container of this app is (or would be) compiled from. For keel:debug:container.
+     */
+    public static function definitionsFor(App $app): Definitions
+    {
+        [$definitions] = self::definitions($app->projectDir, $app->env, $app->configs, $app->config->cacheDir(), $app->config->debug, null);
+        $definitions->instance(Router::class, $app->router);
+
+        return $definitions;
+    }
+
+    /**
      * Runs discovery and builds the definitions: env, configs, providers, discovered services,
      * events with the discovered listeners, kernel defaults, the built-in logger unless the
      * application registered a LoggerInterface, then the $configure closure.

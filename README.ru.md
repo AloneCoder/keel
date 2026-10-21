@@ -16,6 +16,7 @@
 - [Рантаймы: php-fpm, FrankenPHP, RoadRunner](docs/ru/runtime.md) · [English](docs/en/runtime.md)
 - [Приложение: конфиг, discovery, события, консоль](docs/ru/app.md) · [English](docs/en/app.md)
 - [Тестирование](docs/ru/testing.md) · [English](docs/en/testing.md)
+- [Сессии и подписанные cookie](docs/ru/session.md) · [English](docs/en/session.md)
 
 Попробовать пример:
 

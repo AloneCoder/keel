@@ -7,6 +7,11 @@ namespace Keel\Console;
 use Keel\App\App;
 use Keel\Console\Command\CacheClearCommand;
 use Keel\Console\Command\CompileCommand;
+use Keel\Console\Command\DebugContainerCommand;
+use Keel\Console\Command\MakeCommandCommand;
+use Keel\Console\Command\MakeControllerCommand;
+use Keel\Console\Command\MakeListenerCommand;
+use Keel\Console\Command\MakeMiddlewareCommand;
 use Keel\Console\Command\PreloadCommand;
 use Keel\Console\Command\RoutesCommand;
 use Keel\Keel;
@@ -31,6 +36,11 @@ final class ConsoleFactory
             new CacheClearCommand($app),
             new RoutesCommand($app->router),
             new PreloadCommand($app),
+            new DebugContainerCommand($app),
+            new MakeControllerCommand($app),
+            new MakeCommandCommand($app),
+            new MakeMiddlewareCommand($app),
+            new MakeListenerCommand($app),
         ]);
         $console->setCommandLoader(new ContainerCommandLoader($app->container, $app->commands()));
 
