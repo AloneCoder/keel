@@ -105,6 +105,11 @@ $this->events->dispatch(new Greeted($name));   // EventDispatcherInterface из 
 - `keel:routes` — таблица маршрутов;
 - `keel:compile` — пересобрать `discovery.php`, `routes.php`, `container.php`;
 - `keel:cache-clear` — удалить их;
+- `keel:preload` — записать `var/cache/<env>/preload.php` для `opcache.preload`: все файлы, которые
+  приложение загружает на старте и при запросе, в порядке загрузки. С preload классы линкуются один
+  раз в общей памяти opcache, а не в каждом процессе php-fpm и не в каждом воркере; особенно это
+  касается PSR-7 классов с трейтами, которые opcache иначе не разделяет. В php.ini:
+  `opcache.preload=/path/to/var/cache/prod/preload.php`;
 - все найденные `#[AsCommand]`, создаются лениво через контейнер (конструктор автовайрится).
 
 `symfony/console` — опциональная зависимость (`composer require symfony/console`).

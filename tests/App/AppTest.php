@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Keel\Tests\App;
 
 use Keel\App\App;
+use Keel\App\AppBuilder;
 use Keel\Config\AppConfig;
 use Keel\Config\Env;
 use Keel\Container\Compiled\AbstractCompiledContainer;
@@ -16,6 +17,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(App::class)]
+#[CoversClass(AppBuilder::class)]
 final class AppTest extends TestCase
 {
     private const string PROJECT = __DIR__ . '/Fixtures/Project';
@@ -41,7 +43,7 @@ final class AppTest extends TestCase
         self::assertSame($this->cacheDir, $app->config->cacheDir());
         self::assertSame('Hi', $app->container->get(GreetingConfig::class)->prefix);
         self::assertSame($app->env, $app->container->get(Env::class));
-        self::assertSame(['Keel\Tests\App\Fixtures\Project\Src\GreetController'], $app->controllers);
+        self::assertSame(['Keel\Tests\App\Fixtures\Project\Src\GreetController'], $app->controllers());
 
         $response = $app->kernel->handle(new ServerRequest('GET', '/greet/Ann'));
         $app->kernel->handle(new ServerRequest('GET', '/greet/Bob'));

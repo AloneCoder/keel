@@ -8,6 +8,7 @@ use Keel\App\App;
 use Keel\Config\Env;
 use Keel\Console\Command\CacheClearCommand;
 use Keel\Console\Command\CompileCommand;
+use Keel\Console\Command\PreloadCommand;
 use Keel\Console\Command\RoutesCommand;
 use Keel\Console\ConsoleFactory;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -18,6 +19,7 @@ use Symfony\Component\Console\Tester\ApplicationTester;
 #[CoversClass(CompileCommand::class)]
 #[CoversClass(CacheClearCommand::class)]
 #[CoversClass(RoutesCommand::class)]
+#[CoversClass(PreloadCommand::class)]
 final class ConsoleTest extends TestCase
 {
     private ApplicationTester $tester;
@@ -55,6 +57,23 @@ final class ConsoleTest extends TestCase
 
         self::assertSame(0, $this->tester->run(['command' => 'keel:cache-clear']));
         self::assertStringContainsString('Nothing to remove', $this->tester->getDisplay());
+    }
+
+    public function testPreloadWritesLoadOrderedFileList(): void
+    {
+        self::assertSame(0, $this->tester->run(['command' => 'keel:preload']));
+        $path = $this->cacheDir . '/preload.php';
+        self::assertFileExists($path);
+        $source = (string) file_get_contents($path);
+        self::assertStringContainsString('vendor/autoload.php', $source);
+        self::assertStringContainsString('src/Kernel/Kernel.php', $source);
+        self::assertStringContainsString('nyholm/psr7/src/Response.php', $source);
+        self::assertStringContainsString('psr7-server/src/ServerRequestCreator.php', $source);
+        self::assertStringNotContainsString('symfony/console', $source);
+        self::assertStringNotContainsString('/tests/', $source);
+
+        exec(sprintf('%s -l %s 2>&1', escapeshellarg(\PHP_BINARY), escapeshellarg($path)), $lint, $code);
+        self::assertSame(0, $code, implode("\n", $lint));
     }
 
     public function testDiscoveredCommandIsLoadedFromTheContainer(): void

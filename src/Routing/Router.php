@@ -88,6 +88,6 @@ final class Router
     /** @return list<Route> */
     public function routes(): array
     {
-        return $this->compiled->routes;
+        return $this->compiled->routes();
     }
 }

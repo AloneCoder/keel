@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Keel\Kernel;
 
 use Keel\Http\Responder;
+use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -17,10 +18,13 @@ use Psr\Log\LoggerInterface;
  */
 final class ExceptionHandlerMiddleware implements MiddlewareInterface
 {
+    /** @var LoggerInterface|false|null null = not looked up yet, false = container has no logger */
+    private LoggerInterface|false|null $logger = null;
+
     public function __construct(
         private readonly Responder $responder,
         private readonly bool $debug = false,
-        private readonly ?LoggerInterface $logger = null,
+        private readonly ?ContainerInterface $container = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -37,7 +41,7 @@ final class ExceptionHandlerMiddleware implements MiddlewareInterface
         $problem = ProblemDetails::fromThrowable($exception, $this->debug);
 
         if ($problem->status >= 500) {
-            $this->logger?->error($exception->getMessage(), [
+            $this->logger()?->error($exception->getMessage(), [
                 'exception' => $exception,
                 'method' => $request->getMethod(),
                 'path' => $request->getUri()->getPath(),
@@ -50,5 +54,18 @@ final class ExceptionHandlerMiddleware implements MiddlewareInterface
         }
 
         return $response;
+    }
+
+    /**
+     * Resolved on the first server error, so the logger (and its interface) are not loaded at boot.
+     */
+    private function logger(): ?LoggerInterface
+    {
+        if ($this->logger === null) {
+            $logger = $this->container?->has(LoggerInterface::class) === true ? $this->container->get(LoggerInterface::class) : null;
+            $this->logger = $logger instanceof LoggerInterface ? $logger : false;
+        }
+
+        return $this->logger === false ? null : $this->logger;
     }
 }

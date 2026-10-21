@@ -22,7 +22,7 @@ final class UrlGenerator
     {
         $index = $this->routes->names[$name]
             ?? throw new RoutingException(sprintf('Route "%s" is not defined', $name));
-        $route = $this->routes->routes[$index];
+        $route = $this->routes->route($index);
         $parsed = $this->parser->parse($route->path);
 
         $path = $route->path;

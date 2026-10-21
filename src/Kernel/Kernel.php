@@ -24,7 +24,6 @@ use Psr\Http\Message\UploadedFileFactoryInterface;
 use Psr\Http\Message\UriFactoryInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use Psr\Log\LoggerInterface;
 
 /**
  * HTTP kernel: exception handling -> global middleware -> routing -> route middleware -> controller.
@@ -44,11 +43,10 @@ final class Kernel implements RequestHandlerInterface
         public readonly bool $debug = false,
     ) {
         $responder = $container->get(Responder::class);
-        $logger = $container->has(LoggerInterface::class) ? $container->get(LoggerInterface::class) : null;
 
         $this->pipeline = new Pipeline(
             [
-                new ExceptionHandlerMiddleware($responder, $debug, $logger),
+                new ExceptionHandlerMiddleware($responder, $debug, $container),
                 ...$middleware,
                 new RoutingMiddleware($router),
             ],

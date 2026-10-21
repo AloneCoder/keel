@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
+## [Unreleased]
+
+### Changed
+
+- Production boot with warm caches no longer builds definitions or runs discovery; listeners are
+  compiled into the container, `Route` objects are materialized on match, the compiled container's
+  reflection fallback, the URL generator, the hydrator and the body parser are created on first use.
+  Boot went from 58 to 30 loaded files and from 698 KB to 294 KB of heap without opcache.
+- `App::controllers` is now a method, `App::controllers()`; the build side moved to `AppBuilder`.
+- `ExceptionHandlerMiddleware` takes the container and resolves the logger on the first server error.
+
+### Added
+
+- `keel:preload` writes an `opcache.preload` script from the files a request loads.
+
 ## [0.1.0] - 2026-10-21
 
 First release: the whole core, PHP >= 8.4.

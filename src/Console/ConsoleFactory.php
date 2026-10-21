@@ -7,6 +7,7 @@ namespace Keel\Console;
 use Keel\App\App;
 use Keel\Console\Command\CacheClearCommand;
 use Keel\Console\Command\CompileCommand;
+use Keel\Console\Command\PreloadCommand;
 use Keel\Console\Command\RoutesCommand;
 use Keel\Keel;
 use Symfony\Component\Console\Application;
@@ -29,6 +30,7 @@ final class ConsoleFactory
             new CompileCommand($app),
             new CacheClearCommand($app),
             new RoutesCommand($app->router),
+            new PreloadCommand($app),
         ]);
         $console->setCommandLoader(new ContainerCommandLoader($app->container, $app->commands()));
 

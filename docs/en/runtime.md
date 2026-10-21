@@ -27,6 +27,16 @@ exit(Runtime::run($kernel));
 `spiral/roadrunner-http` is an optional dependency; without it `RoadRunnerRuntime` fails at
 start with a clear exception.
 
+## Boot memory
+
+A production boot with warm caches loads about 30 files and creates neither definitions nor
+reflection; `Route` objects are materialized as routes match, event listeners are compiled
+into the container. Under php-fpm add `opcache.preload` with the script from `keel:preload`:
+otherwise every process links the trait-based classes (nyholm/psr7 messages) again, about
+100 KB per process and a visible share of the first request. Measured on the `benchmarks/` app:
+without preload boot takes 72 KB and 30 files, with preload 4 KB and 3 files; boot plus first
+request 12.8 ms versus 2.7 ms.
+
 ## Between requests
 
 In worker modes the same `Kernel`, container and router serve thousands of requests. The rules

@@ -60,7 +60,12 @@ final class RouteCompiler
             }
         }
 
-        return new CompiledRoutes($routes, $static, $chunks, $names);
+        return new CompiledRoutes(
+            array_map(static fn(Route $route): array => $route->toArray(), $routes),
+            $static,
+            $chunks,
+            $names,
+        );
     }
 
     /**

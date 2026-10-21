@@ -106,6 +106,11 @@ object is created by the container on the first event, so it can have dependenci
 - `keel:routes`: the route table;
 - `keel:compile`: rebuild `discovery.php`, `routes.php`, `container.php`;
 - `keel:cache-clear`: remove them;
+- `keel:preload`: write `var/cache/<env>/preload.php` for `opcache.preload`: every file the
+  application loads to boot and answer a request, in load order. With preloading those classes
+  are linked once in opcache shared memory instead of once per php-fpm request or per worker;
+  this matters most for the trait-based PSR-7 classes, which opcache cannot share otherwise.
+  In php.ini: `opcache.preload=/path/to/var/cache/prod/preload.php`;
 - every discovered `#[AsCommand]`, created lazily through the container (autowired constructor).
 
 `symfony/console` is an optional dependency (`composer require symfony/console`).

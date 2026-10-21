@@ -20,7 +20,23 @@ final class ListenerProvider implements ListenerProviderInterface
 
     private int $sequence = 0;
 
-    public function __construct(private readonly ?ContainerInterface $container = null) {}
+    /**
+     * @param array<mixed> $listeners tuples [class, method, event, priority], usually compiled from discovery
+     */
+    public function __construct(private readonly ?ContainerInterface $container = null, array $listeners = [])
+    {
+        foreach ($listeners as $tuple) {
+            if (!is_array($tuple) || count($tuple) !== 4) {
+                continue;
+            }
+            [$class, $method, $event, $priority] = array_values($tuple);
+            if (is_string($class) && is_string($method) && is_string($event) && is_int($priority)) {
+                /** @var class-string $class */
+                /** @var class-string $event */
+                $this->add($event, [$class, $method], $priority);
+            }
+        }
+    }
 
     /**
      * @param class-string                                          $event

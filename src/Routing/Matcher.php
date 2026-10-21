@@ -40,7 +40,7 @@ final class Matcher
     {
         $index = $this->routes->static[$method][$path] ?? null;
         if ($index !== null) {
-            return MatchResult::found($this->routes->routes[$index], []);
+            return MatchResult::found($this->routes->route($index), []);
         }
 
         foreach ($this->routes->dynamic[$method] ?? [] as $chunk) {
@@ -54,7 +54,7 @@ final class Matcher
                 $params[$name] = rawurldecode($matches[$position + 1]);
             }
 
-            return MatchResult::found($this->routes->routes[$index], $params);
+            return MatchResult::found($this->routes->route($index), $params);
         }
 
         return null;

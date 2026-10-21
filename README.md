@@ -46,8 +46,11 @@ Reproduce with `cd benchmarks && composer install && php -d opcache.enable_cli=1
 | Slim 4.15 (closure routes, no container) | 5.9 | 4.8 | 206 000 | 0.07 MB |
 | Symfony 8.1 MicroKernel (FrameworkBundle, `#[Route]`) | 29.5 | 31.0 | 32 000 | 0.52 MB |
 
-Memory: a production boot loads 37 files and allocates about 90 KB of heap (opcache on),
-and the kernel allocates nothing that survives a request: 2000 requests in a row add 0 bytes.
+Memory: a production boot loads 30 files (26 classes, 3 cache files, 1 config file), about
+0.3 MB of heap without opcache and well under 100 KB with it; `Route` objects are materialized
+only for routes that match, and nothing survives a request: 2000 requests in a row add 0 bytes.
+`keel:preload` generates an `opcache.preload` script so php-fpm links every class once: with
+it a boot allocates 4 KB and loads 3 files, and boot plus first request drops from 12.8 ms to 2.7 ms.
 Measure with `php -d opcache.enable_cli=1 memory.php` and `memory-classes.php` in `benchmarks/`.
 
 Keel does more work per request than the Slim app in this table (attribute controller,

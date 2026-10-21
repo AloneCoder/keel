@@ -11,20 +11,34 @@ namespace Keel\Routing;
  * @phpstan-type DynamicChunk array{regex: string, map: array<int, array{0: int, 1: list<string>}>}
  * @phpstan-type Exported array{routes: list<RouteArray>, static: array<string, array<string, int>>, dynamic: array<string, list<DynamicChunk>>, names: array<string, int>}
  */
-final readonly class CompiledRoutes
+final class CompiledRoutes
 {
+    /** @var array<int, Route> materialized on demand: a worker only pays for the routes it serves */
+    private array $routes = [];
+
     /**
-     * @param list<Route>                           $routes
-     * @param array<string, array<string, int>>     $static  method => path => route index
-     * @param array<string, list<DynamicChunk>>     $dynamic method => chunks of grouped regexes
-     * @param array<string, int>                    $names   route name => index
+     * @param list<RouteArray>                      $routeData
+     * @param array<string, array<string, int>>     $static    method => path => route index
+     * @param array<string, list<DynamicChunk>>     $dynamic   method => chunks of grouped regexes
+     * @param array<string, int>                    $names     route name => index
      */
     public function __construct(
-        public array $routes,
-        public array $static,
-        public array $dynamic,
-        public array $names,
+        public readonly array $routeData,
+        public readonly array $static,
+        public readonly array $dynamic,
+        public readonly array $names,
     ) {}
+
+    public function route(int $index): Route
+    {
+        return $this->routes[$index] ??= Route::fromArray($this->routeData[$index]);
+    }
+
+    /** @return list<Route> */
+    public function routes(): array
+    {
+        return array_map($this->route(...), array_keys($this->routeData));
+    }
 
     /**
      * @return Exported
@@ -32,7 +46,7 @@ final readonly class CompiledRoutes
     public function toArray(): array
     {
         return [
-            'routes' => array_map(static fn(Route $route): array => $route->toArray(), $this->routes),
+            'routes' => $this->routeData,
             'static' => $this->static,
             'dynamic' => $this->dynamic,
             'names' => $this->names,
@@ -44,11 +58,6 @@ final readonly class CompiledRoutes
      */
     public static function fromArray(array $data): self
     {
-        return new self(
-            array_map(static fn(array $route): Route => Route::fromArray($route), $data['routes']),
-            $data['static'],
-            $data['dynamic'],
-            $data['names'],
-        );
+        return new self($data['routes'], $data['static'], $data['dynamic'], $data['names']);
     }
 }
