@@ -6,10 +6,11 @@
 атрибутах с ограниченным discovery, компилируемые контейнер и роутер, и один и тот же код
 под php-fpm, FrankenPHP worker mode и RoadRunner.
 
-Статус: стадия проектирования, кода ядра пока нет.
+Статус: этап M1 (контейнер) завершён. Дорожная карта — в документе с решениями.
 
 - [Анализ рынка](docs/ru/analysis.md) · [English](docs/en/analysis.md)
 - [Проектные решения и дорожная карта](docs/ru/design.md) · [English](docs/en/design.md)
+- [Контейнер](docs/ru/container.md) · [English](docs/en/container.md)
 
 Требования: PHP >= 8.4.
 
