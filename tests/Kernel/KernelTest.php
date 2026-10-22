@@ -7,6 +7,7 @@ namespace Keel\Tests\Kernel;
 use Keel\Container\Definitions;
 use Keel\Http\ArgumentResolver;
 use Keel\Http\Exception\HttpException;
+use Keel\Http\Hydrator;
 use Keel\Http\Responder;
 use Keel\Kernel\DispatchHandler;
 use Keel\Kernel\ErrorPage;
@@ -41,6 +42,7 @@ use Psr\Log\LoggerInterface;
 #[CoversClass(ProblemDetails::class)]
 #[CoversClass(ErrorPage::class)]
 #[CoversClass(ArgumentResolver::class)]
+#[CoversClass(Hydrator::class)]
 final class KernelTest extends TestCase
 {
     private ArrayLogger $logger;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Keel\Tests\Console;
 
 use Keel\App\App;
+use Keel\App\AppBuilder;
 use Keel\Config\Env;
 use Keel\Console\Command\DebugContainerCommand;
 use Keel\Console\Command\MakeAuthenticatorCommand;
@@ -14,6 +15,7 @@ use Keel\Console\Command\MakeCommandCommand;
 use Keel\Console\Command\MakeControllerCommand;
 use Keel\Console\Command\MakeListenerCommand;
 use Keel\Console\Command\MakeMiddlewareCommand;
+use Keel\Console\Command\MakePolicyCommand;
 use Keel\Console\ConsoleFactory;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -27,6 +29,8 @@ use Symfony\Component\Console\Tester\ApplicationTester;
 #[CoversClass(MakeCheckCommand::class)]
 #[CoversClass(MakeAuthenticatorCommand::class)]
 #[CoversClass(DebugContainerCommand::class)]
+#[CoversClass(AppBuilder::class)]
+#[CoversClass(MakePolicyCommand::class)]
 final class MakeCommandsTest extends TestCase
 {
     private string $project;
@@ -146,5 +150,30 @@ final class MakeCommandsTest extends TestCase
         foreach ([$check, $resolver, $authenticator] as $source) {
             self::assertStringStartsWith("<?php\n\ndeclare(strict_types=1);", $source);
         }
+    }
+
+    public function testGeneratesPolicies(): void
+    {
+        self::assertSame(0, $this->tester->run(['command' => 'keel:make:policy', 'name' => 'blog-post']));
+        $policy = (string) file_get_contents($this->project . '/src/Auth/BlogPostPolicy.php');
+        self::assertStringContainsString('namespace Acme\Shop\Auth;', $policy);
+        self::assertStringContainsString('#[Tag(Policy::TAG)]', $policy);
+        self::assertStringContainsString("return ['blog_post.view', 'blog_post.update', 'blog_post.delete'];", $policy, 'default abilities derived from the resource');
+        self::assertStringContainsString("'blog_post.update' => \$principal->hasRole('admin'),", $policy);
+
+        self::assertSame(0, $this->tester->run(['command' => 'keel:make:policy', 'name' => 'CommentPolicy', 'abilities' => ['comment:edit', 'comment.hide']]));
+        $comment = (string) file_get_contents($this->project . '/src/Auth/CommentPolicy.php');
+        self::assertStringContainsString('final class CommentPolicy implements Policy', $comment, 'a trailing "Policy" is not doubled');
+        self::assertStringContainsString("return ['comment:edit', 'comment.hide'];", $comment);
+        exec(sprintf('%s -l %s 2>&1', escapeshellarg(\PHP_BINARY), escapeshellarg($this->project . '/src/Auth/CommentPolicy.php')), $out, $code);
+        self::assertSame(0, $code, implode("\n", $out));
+
+        self::assertSame(1, $this->tester->run(['command' => 'keel:make:policy', 'name' => 'Policy']));
+        self::assertStringContainsString('"Policy" alone leaves no abilities to derive', $this->tester->getDisplay());
+        self::assertSame(1, $this->tester->run(['command' => 'keel:make:policy', 'name' => '123']));
+        self::assertStringContainsString('Resource name must be a class name', $this->tester->getDisplay());
+        self::assertSame(1, $this->tester->run(['command' => 'keel:make:policy', 'name' => 'Order', 'abilities' => ["order.view'); system('id"]]));
+        self::assertStringContainsString('must be letters, digits', $this->tester->getDisplay());
+        self::assertFileDoesNotExist($this->project . '/src/Auth/OrderPolicy.php');
     }
 }

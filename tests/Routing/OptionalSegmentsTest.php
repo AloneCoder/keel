@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Keel\Tests\Routing;
 
 use Keel\Container\Definitions;
+use Keel\Http\ArgumentResolver;
 use Keel\Kernel\Kernel;
 use Keel\OpenApi\Generator;
 use Keel\Routing\Exception\RoutingException;
@@ -25,6 +26,7 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(UrlGenerator::class)]
 #[CoversClass(Route::class)]
 #[CoversClass(Generator::class)]
+#[CoversClass(ArgumentResolver::class)]
 final class OptionalSegmentsTest extends TestCase
 {
     /**

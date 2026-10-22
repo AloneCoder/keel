@@ -9,6 +9,7 @@ use Keel\Container\Definitions;
 use Keel\Container\Diagnostics;
 use Keel\Container\Exception\ContainerException;
 use Keel\Container\Ref;
+use Keel\Container\Reflection\Instantiator;
 use Keel\Tests\Container\Fixtures\Clock;
 use Keel\Tests\Container\Fixtures\Connection;
 use Keel\Tests\Container\Fixtures\ConnectionFactory;
@@ -23,6 +24,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(Diagnostics::class)]
+#[CoversClass(ContainerException::class)]
+#[CoversClass(Instantiator::class)]
 final class DiagnosticsTest extends TestCase
 {
     /**

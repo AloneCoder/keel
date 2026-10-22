@@ -18,6 +18,7 @@ use Keel\Auth\Principal;
 use Keel\Auth\PrincipalResolver;
 use Keel\Auth\SecurityScheme;
 use Keel\Container\Definitions;
+use Keel\Http\Exception\ForbiddenException;
 use Keel\Http\Exception\UnauthorizedException;
 use Keel\Kernel\Kernel;
 use Keel\RateLimit\InMemoryCounters;
@@ -39,6 +40,7 @@ use Psr\Clock\ClockInterface;
 #[CoversClass(HmacAuthenticator::class)]
 #[CoversClass(Identity::class)]
 #[CoversClass(SecurityScheme::class)]
+#[CoversClass(ForbiddenException::class)]
 final class AuthTest extends TestCase
 {
     private static function definitions(): Definitions

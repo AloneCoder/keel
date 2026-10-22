@@ -15,6 +15,7 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(Doctor::class)]
 #[CoversClass(Finding::class)]
 #[CoversClass(Severity::class)]
+#[CoversClass(App::class)]
 final class DoctorTest extends TestCase
 {
     private string $cacheDir;

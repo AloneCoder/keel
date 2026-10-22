@@ -9,11 +9,14 @@ use Keel\Container\Definitions;
 use Keel\Http\Attribute\BodyLimit;
 use Keel\Http\CallableHandler;
 use Keel\Http\Exception\ContentTooLargeException;
+use Keel\Http\Exception\HttpException;
+use Keel\Http\Exception\UnsupportedMediaTypeException;
 use Keel\Http\Middleware\BodyLimitConfig;
 use Keel\Http\Middleware\BodyLimitMiddleware;
 use Keel\Http\Stream\IteratorStream;
 use Keel\Http\Stream\LimitedStream;
 use Keel\Kernel\Kernel;
+use Keel\Routing\RouteMatch;
 use Keel\Testing\TestClient;
 use Keel\Tests\Http\Fixtures\LimitedController;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -28,6 +31,10 @@ use Psr\Http\Message\ServerRequestInterface;
 #[CoversClass(BodyLimitConfig::class)]
 #[CoversClass(BodyLimit::class)]
 #[CoversClass(LimitedStream::class)]
+#[CoversClass(ContentTooLargeException::class)]
+#[CoversClass(UnsupportedMediaTypeException::class)]
+#[CoversClass(HttpException::class)]
+#[CoversClass(RouteMatch::class)]
 final class BodyLimitTest extends TestCase
 {
     private static function client(BodyLimitConfig $config): TestClient

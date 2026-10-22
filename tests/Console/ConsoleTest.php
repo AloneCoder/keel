@@ -26,6 +26,7 @@ use Symfony\Component\Console\Tester\ApplicationTester;
 #[CoversClass(PreloadCommand::class)]
 #[CoversClass(OpenApiCommand::class)]
 #[CoversClass(ServeCommand::class)]
+#[CoversClass(App::class)]
 final class ConsoleTest extends TestCase
 {
     private ApplicationTester $tester;

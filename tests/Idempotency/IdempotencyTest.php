@@ -10,11 +10,13 @@ use Keel\Cache\ArrayCache;
 use Keel\Container\Definitions;
 use Keel\Http\CallableHandler;
 use Keel\Http\Exception\ConflictException;
+use Keel\Http\Exception\UnprocessableContentException;
 use Keel\Idempotency\Attribute\Idempotent;
 use Keel\Idempotency\IdempotencyConfig;
 use Keel\Idempotency\IdempotencyMiddleware;
 use Keel\Kernel\Kernel;
 use Keel\RateLimit\InMemoryCounters;
+use Keel\Routing\RouteMatch;
 use Keel\Testing\TestClient;
 use Keel\Tests\Idempotency\Fixtures\OrderController;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -29,6 +31,9 @@ use Psr\SimpleCache\CacheInterface;
 #[CoversClass(IdempotencyMiddleware::class)]
 #[CoversClass(IdempotencyConfig::class)]
 #[CoversClass(Idempotent::class)]
+#[CoversClass(ConflictException::class)]
+#[CoversClass(UnprocessableContentException::class)]
+#[CoversClass(RouteMatch::class)]
 final class IdempotencyTest extends TestCase
 {
     private ArrayCache $cache;

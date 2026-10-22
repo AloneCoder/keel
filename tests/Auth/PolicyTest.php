@@ -15,8 +15,10 @@ use Keel\Auth\PolicyGuard;
 use Keel\Auth\PrincipalResolver;
 use Keel\Container\Definitions;
 use Keel\Http\Exception\ForbiddenException;
+use Keel\Http\Exception\HttpException;
 use Keel\Kernel\Kernel;
 use Keel\OpenApi\Generator;
+use Keel\Routing\Attribute\Patch;
 use Keel\Routing\Router;
 use Keel\Testing\TestClient;
 use Keel\Tests\Auth\Fixtures\PolicyController;
@@ -28,6 +30,9 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(Gate::class)]
 #[CoversClass(PolicyGuard::class)]
 #[CoversClass(Can::class)]
+#[CoversClass(ForbiddenException::class)]
+#[CoversClass(HttpException::class)]
+#[CoversClass(Patch::class)]
 final class PolicyTest extends TestCase
 {
     /**

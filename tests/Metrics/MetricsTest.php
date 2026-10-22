@@ -6,6 +6,7 @@ namespace Keel\Tests\Metrics;
 
 use Keel\Container\Definitions;
 use Keel\Kernel\Kernel;
+use Keel\Metrics\ApcuStorage;
 use Keel\Metrics\InMemoryStorage;
 use Keel\Metrics\MetricsConfig;
 use Keel\Metrics\MetricsMiddleware;
@@ -20,6 +21,7 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(InMemoryStorage::class)]
 #[CoversClass(MetricsConfig::class)]
 #[CoversClass(MetricsMiddleware::class)]
+#[CoversClass(ApcuStorage::class)]
 final class MetricsTest extends TestCase
 {
     public function testRendersCountersGaugesAndHistogramsInExpositionFormat(): void

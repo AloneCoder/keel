@@ -4,16 +4,23 @@ declare(strict_types=1);
 
 namespace Keel\Tests\Testing;
 
+use Keel\App\App;
+use Keel\Config\Env;
 use Keel\Container\Definitions;
+use Keel\Http\CallableHandler;
+use Keel\Http\Responder;
 use Keel\Kernel\Kernel;
 use Keel\Testing\TestClient;
 use Keel\Testing\TestResponse;
 use Keel\Tests\Kernel\Fixtures\Clock;
 use Keel\Tests\Kernel\Fixtures\RequestCounter;
 use Keel\Tests\Kernel\Fixtures\UserController;
+use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 
 #[CoversClass(TestClient::class)]
 #[CoversClass(TestResponse::class)]
@@ -77,5 +84,31 @@ final class TestClientTest extends TestCase
         } catch (AssertionFailedError $e) {
             self::assertStringContainsString('Expected status 500, got 200. Body: {"id":1', $e->getMessage());
         }
+    }
+
+    public function testCookiesServerParametersAndPatch(): void
+    {
+        $factory = new Psr17Factory();
+        $responder = new Responder($factory, $factory);
+        $client = new TestClient(new CallableHandler(static fn(ServerRequestInterface $request): ResponseInterface => $responder->json([
+            'method' => $request->getMethod(),
+            'cookies' => $request->getCookieParams(),
+            'ip' => $request->getServerParams()['REMOTE_ADDR'] ?? null,
+            'https' => $request->getServerParams()['HTTPS'] ?? null,
+            'body' => $request->getParsedBody(),
+        ])));
+
+        $client->withCookie('theme', 'dark')->withServer(['REMOTE_ADDR' => '10.0.0.7', 'HTTPS' => 'on'])
+            ->patch('/notes/1', ['title' => 'New'])
+            ->assertJson(['method' => 'PATCH', 'cookies' => ['theme' => 'dark'], 'ip' => '10.0.0.7', 'https' => 'on', 'body' => ['title' => 'New']]);
+        $client->get('/')->assertJson(['cookies' => [], 'ip' => '127.0.0.1', 'https' => null]);
+    }
+
+    public function testForAppUsesTheApplicationKernel(): void
+    {
+        $env = new Env(['APP_ENV' => 'dev', 'APP_DEBUG' => '1', 'KEEL_CACHE_DIR' => sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/client-' . uniqid()]);
+        $client = TestClient::forApp(App::boot(dirname(__DIR__) . '/App/Fixtures/Project', $env));
+
+        $client->get('/greet/ann')->assertOk()->assertJsonPath('greeting', 'Hi, ann!');
     }
 }

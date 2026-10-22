@@ -8,8 +8,11 @@ use Keel\Container\Compiled\AbstractCompiledContainer;
 use Keel\Container\Compiler;
 use Keel\Container\ContainerInterface;
 use Keel\Container\Definitions;
+use Keel\Container\Exception\CircularDependencyException;
 use Keel\Container\Exception\ContainerException;
 use Keel\Container\Exception\NotFoundException;
+use Keel\Container\Reflection\Planner;
+use Keel\Container\Resetter;
 use Keel\Tests\Container\Fixtures\Connection;
 use Keel\Tests\Container\Fixtures\ConnectionFactory;
 use Keel\Tests\Container\Fixtures\HttpConfig;
@@ -22,6 +25,11 @@ use PHPUnit\Framework\Attributes\CoversClass;
 
 #[CoversClass(Compiler::class)]
 #[CoversClass(AbstractCompiledContainer::class)]
+#[CoversClass(ContainerException::class)]
+#[CoversClass(CircularDependencyException::class)]
+#[CoversClass(Resetter::class)]
+#[CoversClass(Planner::class)]
+#[CoversClass(Definitions::class)]
 final class CompiledContainerTest extends ContainerBehaviourTestCase
 {
     private static int $counter = 0;

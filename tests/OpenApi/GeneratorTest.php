@@ -8,6 +8,7 @@ use Keel\Auth\AuthConfig;
 use Keel\Auth\BearerTokenAuthenticator;
 use Keel\Auth\PrincipalResolver;
 use Keel\Container\Definitions;
+use Keel\Http\Exception\HttpException;
 use Keel\Http\Responder;
 use Keel\Kernel\Kernel;
 use Keel\OpenApi\Attribute\Field;
@@ -37,6 +38,7 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(Response::class)]
 #[CoversClass(Field::class)]
 #[CoversClass(Hidden::class)]
+#[CoversClass(HttpException::class)]
 final class GeneratorTest extends TestCase
 {
     /**
@@ -245,5 +247,22 @@ final class GeneratorTest extends TestCase
         self::assertSame(['type' => 'array', 'items' => ['type' => 'integer']], $builder->named('array', 'int'));
         self::assertSame([], $builder->named('Nope\Missing'));
         self::assertSame(['type' => 'number'], $builder->named('float'));
+    }
+
+    public function testDocTypesReadsBracketArraysAndIgnoresOtherShapes(): void
+    {
+        /** @return Item[] */
+        $items = static fn(): array => [];
+        /** @return string[] */
+        $strings = static fn(): array => [];
+        /** @return array{id: int} */
+        $shape = static fn(): array => ['id' => 1];
+        /** @return int */
+        $scalar = static fn(): int => 1;
+
+        self::assertSame(Item::class, DocTypes::returnItems(new \ReflectionFunction($items)), 'resolved through the file\'s imports');
+        self::assertSame('string', DocTypes::returnItems(new \ReflectionFunction($strings)));
+        self::assertNull(DocTypes::returnItems(new \ReflectionFunction($shape)));
+        self::assertNull(DocTypes::returnItems(new \ReflectionFunction($scalar)));
     }
 }

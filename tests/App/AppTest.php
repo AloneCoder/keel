@@ -7,11 +7,14 @@ namespace Keel\Tests\App;
 use Keel\App\App;
 use Keel\App\AppBuilder;
 use Keel\Config\AppConfig;
+use Keel\Config\DiscoveryConfig;
 use Keel\Config\Env;
 use Keel\Container\Compiled\AbstractCompiledContainer;
 use Keel\Container\Container;
 use Keel\Container\Definitions;
 use Keel\Container\Exception\ContainerException;
+use Keel\Discovery\ServiceDiscovery;
+use Keel\Event\ListenerProvider;
 use Keel\Testing\TestClient;
 use Keel\Tests\App\Fixtures\NullLoggerProvider;
 use Keel\Tests\App\Fixtures\Project\Src\GreetingConfig;
@@ -24,6 +27,9 @@ use Psr\Log\NullLogger;
 
 #[CoversClass(App::class)]
 #[CoversClass(AppBuilder::class)]
+#[CoversClass(DiscoveryConfig::class)]
+#[CoversClass(ServiceDiscovery::class)]
+#[CoversClass(ListenerProvider::class)]
 final class AppTest extends TestCase
 {
     private const string PROJECT = __DIR__ . '/Fixtures/Project';

@@ -24,6 +24,7 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(ServerTimingConfig::class)]
 #[CoversClass(Deprecated::class)]
 #[CoversClass(DeprecationMiddleware::class)]
+#[CoversClass(Generator::class)]
 final class ServerTimingAndDeprecationTest extends TestCase
 {
     public function testServerTimingCollector(): void

@@ -9,8 +9,10 @@ use Keel\Http\Pagination\Page;
 use Keel\Http\Pagination\PageRequest;
 use Keel\Kernel\Kernel;
 use Keel\OpenApi\Generator;
+use Keel\OpenApi\SchemaBuilder;
 use Keel\Routing\Router;
 use Keel\Tests\Kernel\Fixtures\PagedController;
+use Keel\Validation\Range;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -18,6 +20,8 @@ use Psr\Http\Message\ResponseInterface;
 
 #[CoversClass(Page::class)]
 #[CoversClass(PageRequest::class)]
+#[CoversClass(SchemaBuilder::class)]
+#[CoversClass(Range::class)]
 final class PaginationTest extends TestCase
 {
     /**

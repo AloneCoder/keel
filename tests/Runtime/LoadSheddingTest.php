@@ -24,6 +24,7 @@ use Psr\Http\Message\ServerRequestInterface;
 #[CoversClass(LoadSheddingConfig::class)]
 #[CoversClass(LocalInFlightCounter::class)]
 #[CoversClass(ApcuInFlightCounter::class)]
+#[CoversClass(ServiceUnavailableException::class)]
 final class LoadSheddingTest extends TestCase
 {
     private static function ok(): CallableHandler

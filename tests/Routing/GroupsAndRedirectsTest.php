@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Keel\Tests\Routing;
 
 use Keel\Container\Definitions;
+use Keel\Http\ArgumentResolver;
 use Keel\Http\Redirect;
 use Keel\Http\Responder;
 use Keel\Kernel\Kernel;
@@ -28,6 +29,8 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(Redirector::class)]
 #[CoversClass(Redirect::class)]
 #[CoversClass(Responder::class)]
+#[CoversClass(ArgumentResolver::class)]
+#[CoversClass(Generator::class)]
 final class GroupsAndRedirectsTest extends TestCase
 {
     public function testParentClassesActAsRouteGroups(): void

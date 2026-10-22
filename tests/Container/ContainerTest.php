@@ -8,10 +8,14 @@ use Keel\Container\Container;
 use Keel\Container\ContainerInterface;
 use Keel\Container\Definition;
 use Keel\Container\Definitions;
+use Keel\Container\Exception\CircularDependencyException;
+use Keel\Container\Exception\ContainerException;
 use Keel\Container\Exception\NotFoundException;
+use Keel\Container\Reflection\ArgumentPlan;
 use Keel\Container\Reflection\ClassAttributes;
 use Keel\Container\Reflection\Instantiator;
 use Keel\Container\Reflection\Planner;
+use Keel\Container\Resetter;
 use Keel\Tests\Container\Fixtures\Connection;
 use Keel\Tests\Container\Fixtures\ConnectionFactory;
 use Keel\Tests\Container\Fixtures\Logger;
@@ -23,6 +27,10 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass(ClassAttributes::class)]
 #[CoversClass(Planner::class)]
 #[CoversClass(Instantiator::class)]
+#[CoversClass(ContainerException::class)]
+#[CoversClass(CircularDependencyException::class)]
+#[CoversClass(Resetter::class)]
+#[CoversClass(ArgumentPlan::class)]
 final class ContainerTest extends ContainerBehaviourTestCase
 {
     protected function createContainer(Definitions $definitions, bool $autowire = true): ContainerInterface
