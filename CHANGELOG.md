@@ -7,8 +7,8 @@ Until 1.0.0 minor versions may contain breaking changes.
 ## [Unreleased]
 
 The second wave of the ecosystem survey: resilience for outgoing calls (Polly, SmallRye Fault
-Tolerance, Hyperf, Fiber, tower) and signed URLs (Laravel, Roda `hmac_paths`). No public method
-was removed or renamed.
+Tolerance, Hyperf, Fiber, tower), signed URLs (Laravel, Roda `hmac_paths`) and mail (Spiral,
+Tempest, Leaf, Quarkus, Flask-Mail). No public method was removed or renamed.
 
 ### Added
 
@@ -27,6 +27,12 @@ was removed or renamed.
   under their own purpose, optional expiry, 403 for a missing, altered or expired signature;
   `expires` and `signature` appear as query parameters in OpenAPI. `keel:install signed-urls`.
 - **Session**: `CookieSigner::signature()`: the detached signature of a payload.
+- **Mail** (`Keel\Mail`): Symfony Mailer as a provider. `MailConfig` (DSN, default `From`,
+  `Reply-To` and headers), `MailerProvider` (the transport from the DSN, Symfony's `Mailer` as
+  `MailerInterface`, `MailerCheck` tagged `keel.health`), `Mailer` with `send()` and `defer()`
+  (delivery through `DeferredTasks` after the response), `MemoryTransport` behind the
+  `memory://default` DSN for tests. `keel:install mailer`; `symfony/mailer` is suggested and a
+  dev dependency for the tests; `keel:doctor` lists it among the optional packages.
 
 ### Changed
 

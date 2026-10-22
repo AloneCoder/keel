@@ -19,7 +19,7 @@
 - [OpenAPI](docs/ru/openapi.md) · [English](docs/en/openapi.md)
 - [Здоровье и метрики](docs/ru/observability.md) · [English](docs/en/observability.md)
 - [База данных](docs/ru/database.md), [Шаблоны](docs/ru/views.md), [Кэш](docs/ru/cache.md), [HTTP-клиент](docs/ru/http-client.md) · [English](docs/en/database.md)
-- [Файловое хранилище](docs/ru/storage.md), [Локализация](docs/ru/i18n.md) · [English](docs/en/storage.md)
+- [Файловое хранилище](docs/ru/storage.md), [Локализация](docs/ru/i18n.md), [Почта](docs/ru/mail.md) · [English](docs/en/storage.md)
 - [Стабильность API](docs/ru/api.md) · [English](docs/en/api.md)
 
 Попробовать пример:
@@ -101,8 +101,8 @@ Memcached, файловое хранилище и локализацию. 1.4 д
 коробки: заголовки безопасности, лимиты тела, доверенные хосты, ключи идемпотентности,
 Server-Timing, заголовки устаревания, стриминг и Server-Sent Events, сброс нагрузки, события
 жизненного цикла, работу после ответа, JWT/JWKS аутентификатор, кэш вывода с тегами,
-`keel:install` и `keel:ai:init`. 1.5 добавляет повторы и circuit breaker в HTTP-клиенте и
-подписанные URL. Дальше решает обратная связь от реальных проектов; очереди и
+`keel:install` и `keel:ai:init`. 1.5 добавляет повторы и circuit breaker в HTTP-клиенте,
+подписанные URL и Symfony Mailer. Дальше решает обратная связь от реальных проектов; очереди и
 планировщик остаются за рамками.
 
 Лицензия: MIT.

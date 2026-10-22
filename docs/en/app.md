@@ -67,10 +67,10 @@ new process instead of silently serving the old container.
 A config is a plain readonly object; services receive it through the constructor by type:
 
 ```php
-// config/mailer.php
-return static fn(Env $env): MailerConfig => new MailerConfig(dsn: $env->require('MAILER_DSN'));
+// config/mail.php
+return static fn(Env $env): MailConfig => new MailConfig(dsn: $env->require('MAILER_DSN'));
 
-final class Mailer { public function __construct(private MailerConfig $config) {} }
+final class Mailer { public function __construct(private MailConfig $config) {} }
 ```
 
 `Env`: `get`, `require`, `bool` (`1/true/yes/on`), `int`, `has`, `with`. `.env` parsing:
@@ -197,8 +197,8 @@ return static fn(string $projectDir): LoggerConfig => new LoggerConfig(
   missing), and a starter config file for what it needs (`config/redis.php`, `config/jwt.php`,
   ...), never overwriting one that exists without `--force`. Without arguments it lists the
   components: `cache`, `redis`, `memcached`, `dbal`, `pdo`, `twig`, `latte`, `monolog`,
-  `storage`, `flysystem`, `i18n`, `http-client`, `jwt`, `security-headers`, `cors`, `health`,
-  `metrics`, `openapi`, `opentelemetry`, `roadrunner`, `console`. A component may pull others in
+  `storage`, `flysystem`, `i18n`, `mailer`, `http-client`, `jwt`, `security-headers`, `cors`,
+  `health`, `metrics`, `openapi`, `opentelemetry`, `roadrunner`, `console`. A component may pull others in
   (`jwt` brings `http-client` and `cache`); a list it cannot find in a config file is reported
   and has to be edited by hand (exit code 1);
 - `keel:ai:init [--force] [--agents=AGENTS.md] [--llms=public/llms.txt] [--stdout]`: writes an

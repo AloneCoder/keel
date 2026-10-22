@@ -19,7 +19,7 @@ Status: 1.4.0, API frozen under semantic versioning. Documentation site: https:/
 - [OpenAPI](docs/en/openapi.md) · [по-русски](docs/ru/openapi.md)
 - [Health and metrics](docs/en/observability.md) · [по-русски](docs/ru/observability.md)
 - [Database](docs/en/database.md), [Templates](docs/en/views.md), [Cache](docs/en/cache.md), [HTTP client](docs/en/http-client.md) · [по-русски](docs/ru/database.md)
-- [File storage](docs/en/storage.md), [Localization](docs/en/i18n.md) · [по-русски](docs/ru/storage.md)
+- [File storage](docs/en/storage.md), [Localization](docs/en/i18n.md), [Mail](docs/en/mail.md) · [по-русски](docs/ru/storage.md)
 - [API stability](docs/en/api.md) · [по-русски](docs/ru/api.md)
 
 Try the example:
@@ -101,7 +101,7 @@ Memcached, file storage and localization. 1.4 added what other ecosystems ship f
 security headers, body limits, trusted hosts, idempotency keys, Server-Timing, deprecation
 headers, streaming and Server-Sent Events, load shedding, lifecycle events, work after the
 response, a JWT/JWKS authenticator, an output cache with tags, `keel:install` and
-`keel:ai:init`. 1.5 adds HTTP-client retries with a circuit breaker and signed URLs. Next:
+`keel:ai:init`. 1.5 adds HTTP-client retries with a circuit breaker, signed URLs and Symfony Mailer. Next:
 feedback from real projects decides; queues and schedulers stay out of
 scope.
 

@@ -27,6 +27,7 @@ a new major version, with a deprecation in the previous minor where feasible.
 | Idempotency (1.4) | `IdempotencyMiddleware`, `IdempotencyConfig`, `Attribute\Idempotent` |
 | Output cache (1.4) | `Cache\Attribute\OutputCache`, `OutputCacheMiddleware`, `OutputCacheStore`, `OutputCacheConfig` |
 | Signed URLs (1.5) | `Auth\UrlSigner`, `SignedUrlConfig`, `SignedUrlStatus`, `SignedUrlGuard`, `Auth\Attribute\Signed`, `Session\CookieSigner::signature()` |
+| Mail (1.5) | `MailConfig`, `MailerProvider`, `Mailer`, `MemoryTransport`, `MemoryTransportFactory`, `MailerCheck` |
 
 **Stable formats.** The Problem Details JSON shape, the `errors` message format `"field: message"`,
 the `Set-Cookie` attributes of sessions, the console command names and arguments, the health

@@ -66,8 +66,8 @@ PHP не умеет перезагружать класс: если `container.p
 Конфиг — обычный readonly-объект; сервисы получают его через конструктор по типу:
 
 ```php
-// config/mailer.php
-return static fn(Env $env): MailerConfig => new MailerConfig(dsn: $env->require('MAILER_DSN'));
+// config/mail.php
+return static fn(Env $env): MailConfig => new MailConfig(dsn: $env->require('MAILER_DSN'));
 
 final class Mailer { public function __construct(private MailerConfig $config) {} }
 ```
@@ -194,8 +194,8 @@ return static fn(string $projectDir): LoggerConfig => new LoggerConfig(
   его нет), и стартовый конфиг для того, что ему нужно (`config/redis.php`, `config/jwt.php`,
   ...), без перезаписи существующего без `--force`. Без аргументов выводит список компонентов:
   `cache`, `redis`, `memcached`, `dbal`, `pdo`, `twig`, `latte`, `monolog`, `storage`,
-  `flysystem`, `i18n`, `http-client`, `jwt`, `security-headers`, `cors`, `health`, `metrics`,
-  `openapi`, `opentelemetry`, `roadrunner`, `console`. Компонент может тянуть другие (`jwt`
+  `flysystem`, `i18n`, `mailer`, `http-client`, `jwt`, `security-headers`, `cors`, `health`,
+  `metrics`, `openapi`, `opentelemetry`, `roadrunner`, `console`. Компонент может тянуть другие (`jwt`
   приносит `http-client` и `cache`); список, который не удалось найти в конфиге, команда
   называет, и его нужно поправить руками (код выхода 1);
 - `keel:ai:init [--force] [--agents=AGENTS.md] [--llms=public/llms.txt] [--stdout]`: пишет

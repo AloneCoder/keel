@@ -64,6 +64,7 @@ plugins:
             HTTP client: HTTP-клиент
             File storage: Файловое хранилище
             Localization: Локализация
+            Mail: Почта
 nav:
   - Overview: index.md
   - API stability: api.md
@@ -86,3 +87,4 @@ nav:
       - HTTP client: http-client.md
       - File storage: storage.md
       - Localization: i18n.md
+      - Mail: mail.md

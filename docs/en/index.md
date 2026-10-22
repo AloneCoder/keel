@@ -16,7 +16,7 @@ cd my-app && composer serve
 - [Database](database.md), [Templates](views.md), [Cache](cache.md), [HTTP client](http-client.md)
   wire PDO or Doctrine DBAL, Twig or Latte, a PSR-16 cache and a PSR-18 client (since 1.2).
 - [File storage](storage.md) and [Localization](i18n.md) add disks with upload binding and a
-  translator with locale negotiation.
+  translator with locale negotiation; [Mail](mail.md) wires Symfony Mailer with delivery after the response.
 - [API stability](api.md) states what semantic versioning covers from 1.0.
 
 Source, issues and benchmarks: [github.com/AloneCoder/keel](https://github.com/AloneCoder/keel).

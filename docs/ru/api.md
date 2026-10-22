@@ -27,6 +27,7 @@
 | Idempotency (1.4) | `IdempotencyMiddleware`, `IdempotencyConfig`, `Attribute\Idempotent` |
 | Кэш вывода (1.4) | `Cache\Attribute\OutputCache`, `OutputCacheMiddleware`, `OutputCacheStore`, `OutputCacheConfig` |
 | Подписанные URL (1.5) | `Auth\UrlSigner`, `SignedUrlConfig`, `SignedUrlStatus`, `SignedUrlGuard`, `Auth\Attribute\Signed`, `Session\CookieSigner::signature()` |
+| Почта (1.5) | `MailConfig`, `MailerProvider`, `Mailer`, `MemoryTransport`, `MemoryTransportFactory`, `MailerCheck` |
 
 **Стабильные форматы.** Форма JSON Problem Details, формат сообщений `errors` вида `"поле: текст"`,
 атрибуты `Set-Cookie` сессий, имена и аргументы консольных команд, схема подписанных URL

@@ -38,6 +38,7 @@ final class Doctor
         'twig/twig' => 'TwigProvider',
         'latte/latte' => 'LatteProvider',
         'monolog/monolog' => 'PSR-3 logger',
+        'symfony/mailer' => 'MailerProvider',
         'open-telemetry/sdk' => 'TracingMiddleware',
     ];
 

@@ -82,7 +82,8 @@ final class AgentsGuide
             . "- Worker mode: a service instance lives for the whole worker. Keep no request state in statics, globals or\n"
             . "  shared services; implement `Keel\\Container\\Resettable` where a service must hold per-request state; pass\n"
             . "  the request explicitly. Use `#[Transient]` for services that must be fresh on every `get()`.\n"
-            . "- Work after the response (mails, webhooks) goes through `Keel\\Kernel\\DeferredTasks::defer()`; there is no queue.\n"
+            . "- Work after the response (mails, webhooks) goes through `Keel\\Kernel\\DeferredTasks::defer()`\n"
+            . "  (`Keel\\Mail\\Mailer::defer()` for a Symfony Mime `Email`); there is no queue.\n"
             . "- Tests use `Keel\\Testing\\TestClient::forApp(App::boot(\$projectDir, new Env(['APP_ENV' => 'test', 'APP_DEBUG' => '1'])))`\n"
             . "  and assert on `TestResponse` (`assertStatus`, `assertJson`, `assertProblem`, ...).\n\n";
 

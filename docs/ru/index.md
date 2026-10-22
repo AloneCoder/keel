@@ -16,7 +16,7 @@ cd my-app && composer serve
 - [База данных](database.md), [Шаблоны](views.md), [Кэш](cache.md), [HTTP-клиент](http-client.md) —
   подключение PDO или Doctrine DBAL, Twig или Latte, кэша PSR-16 и клиента PSR-18 (с 1.2).
 - [Файловое хранилище](storage.md) и [Локализация](i18n.md) добавляют диски с привязкой загрузок
-  и переводчик с выбором локали.
+  и переводчик с выбором локали; [Почта](mail.md) подключает Symfony Mailer с отправкой после ответа.
 - [Стабильность API](api.md) фиксирует, что покрывает семантическое версионирование с 1.0.
 
 Исходники, issue и бенчмарки: [github.com/AloneCoder/keel](https://github.com/AloneCoder/keel).

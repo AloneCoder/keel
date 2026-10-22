@@ -15,6 +15,7 @@ use Keel\HttpClient\HttpClientProvider;
 use Keel\I18n\I18nProvider;
 use Keel\I18n\LocaleMiddleware;
 use Keel\Log\MonologProvider;
+use Keel\Mail\MailerProvider;
 use Keel\Metrics\MetricsMiddleware;
 use Keel\OpenApi\OpenApiMiddleware;
 use Keel\Redis\RedisProvider;
@@ -88,6 +89,9 @@ final readonly class Component
             new self('i18n', 'Translations, plural rules and locale negotiation', providers: [I18nProvider::class], middleware: [LocaleMiddleware::class], configs: [
                 'i18n.php' => self::config(['Keel\Config\Env', 'Keel\I18n\I18nConfig'], "static fn(Env \$env, string \$projectDir): I18nConfig => new I18nConfig(\$projectDir . '/translations', ['en'])"),
             ], notes: 'Messages live in translations/<locale>/messages.php.'),
+            new self('mailer', 'Symfony Mailer: SMTP, sendmail or an API bridge behind Keel\\Mail\\Mailer', packages: ['symfony/mailer'], providers: [MailerProvider::class], configs: [
+                'mail.php' => self::config(['Keel\Config\Env', 'Keel\Mail\MailConfig'], "static fn(Env \$env): MailConfig => new MailConfig(\$env->get('MAILER_DSN') ?? 'null://null', from: \$env->get('MAIL_FROM'))"),
+            ], notes: 'Set MAILER_DSN (smtp://user:pass@host:587, sendmail://default) and MAIL_FROM ("App <no-reply@example.com>"); API bridges such as symfony/mailgun-mailer are extra packages and need symfony/http-client.'),
             new self('http-client', 'PSR-18 HTTP client on cURL', extensions: ['curl'], providers: [HttpClientProvider::class], configs: [
                 'http_client.php' => self::config(['Keel\HttpClient\HttpClientConfig'], 'new HttpClientConfig()'),
             ]),
