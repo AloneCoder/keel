@@ -125,14 +125,17 @@ final class Der
         return $length;
     }
 
+    /**
+     * @param int<0, max> $length
+     */
     private static function encodeLength(int $length): string
     {
         if ($length < 0x80) {
-            return chr($length);
+            return pack('C', $length);
         }
         $bytes = ltrim(pack('N', $length), "\x00");
 
-        return chr(0x80 | strlen($bytes)) . $bytes;
+        return pack('C', 0x80 | strlen($bytes)) . $bytes;
     }
 
     private static function integer(string $bytes): string
