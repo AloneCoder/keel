@@ -16,6 +16,22 @@ if ($path === '/loop') {
     header('Location: /loop', true, 302);
     exit;
 }
+if ($path === '/flaky') {
+    // ?id=<unique>&fail=<n>: the first n requests with this id get 503, the following ones 200.
+    $id = $_GET['id'] ?? '';
+    $file = sys_get_temp_dir() . '/keel-flaky-' . preg_replace('/\W/', '', is_string($id) ? $id : '');
+    $seen = is_file($file) ? (int) file_get_contents($file) : 0;
+    file_put_contents($file, (string) ($seen + 1));
+    $fail = $_GET['fail'] ?? '1';
+    if ($seen < (is_string($fail) ? (int) $fail : 1)) {
+        http_response_code(503);
+        header('Retry-After: 0');
+        echo 'try again';
+        exit;
+    }
+    echo 'ok after ' . $seen;
+    exit;
+}
 if ($path === '/slow') {
     usleep(300_000);
 }

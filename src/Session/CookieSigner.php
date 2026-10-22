@@ -8,7 +8,7 @@ namespace Keel\Session;
  * HMAC-SHA256 signing of cookie values: "payload.signature", url-safe base64. Signed values
  * are readable by the client but cannot be altered; keep secrets out of them.
  *
- * Give every use its own $purpose ("session", "remember-me", "download-link"): a value signed
+ * Give every use its own $purpose ("session", "remember-me", "signed-url"): a value signed
  * for one purpose then fails verification under another, even with the same secret. The default
  * (empty) purpose keeps values signed by earlier versions valid.
  */
@@ -25,7 +25,16 @@ final readonly class CookieSigner
     {
         $encoded = self::encode($payload);
 
-        return $encoded . '.' . self::encode(hash_hmac('sha256', $encoded, $this->key, true));
+        return $encoded . '.' . $this->signature($encoded);
+    }
+
+    /**
+     * The signature alone (url-safe base64, 43 characters), for a payload that travels separately,
+     * such as the path and query of a signed URL. Compare it with hash_equals().
+     */
+    public function signature(string $payload): string
+    {
+        return self::encode(hash_hmac('sha256', $payload, $this->key, true));
     }
 
     /**

@@ -57,7 +57,9 @@ API `Session`: `get`, `set`, `has`, `remove`, `pull` (flash), `all`, `clear`, `r
 верно только с настроенным `TrustedProxiesMiddleware`, иначе задайте `secure: true` явно.
 
 `CookieSigner` можно использовать отдельно: `sign($value)` → `payload.signature`, `verify($cookie)`
-→ значение или `null` при неверной подписи. Подходит для «remember me» и подписанных ссылок.
+→ значение или `null` при неверной подписи; `signature($payload)` — одна подпись, для данных,
+которые передаются отдельно. Подходит для «remember me»; для подписанных ссылок есть
+[`UrlSigner`](routing.md#подписанные-url) на его основе.
 Давайте каждому применению своё назначение, `new CookieSigner($secret, 'remember-me')`: значение,
 подписанное для одного назначения, не пройдёт проверку под другим, так что id сессии никогда не
 сойдёт за remember-me-токен. Пустое назначение по умолчанию использует middleware сессий, им же

@@ -64,6 +64,79 @@ final class GeoClient
   connections to the same host survive between requests. After a failure the handle is
   recreated.
 
+## Retries and circuit breaker
+
+Two PSR-18 decorators, enabled from the config and stacked over `CurlClient` by the provider
+(retries outside, the breaker inside, so every attempt passes the breaker). They wrap any PSR-18
+client, Guzzle included, when built by hand.
+
+```php
+// config/http_client.php
+return new HttpClientConfig(
+    timeout: 5.0,
+    retry: new RetryConfig(
+        maxAttempts: 3,       // the first attempt included
+        delay: 0.1,           // before the first retry, then x multiplier
+        maxDelay: 2.0,        // cap of one wait, Retry-After included
+        multiplier: 2.0,
+        jitter: true,         // wait between half and all of the delay
+        statuses: [408, 429, 500, 502, 503, 504],
+    ),
+    circuitBreaker: new CircuitBreakerConfig(
+        failures: 5,          // consecutive failures that open the circuit of a host
+        openFor: 30,          // seconds of refusing calls, then one probe
+        window: 60,           // failures are forgotten this long after the last one
+        statuses: [500, 502, 503, 504],
+        shared: true,         // state in APCu: the workers of a server open it together
+    ),
+);
+```
+
+`RetryingClient` repeats a request after a network failure or one of `statuses`:
+
+- Only requests safe to repeat: `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, `TRACE`, or any
+  method with an `Idempotency-Key` header (pair it with `#[Idempotent]` on the server side). A
+  body that cannot be rewound is never sent twice; a seekable one is rewound before each attempt.
+- Waits `delay × multiplier^(n-1)`, capped at `maxDelay`, with jitter. A `Retry-After` (seconds
+  or an HTTP date) replaces the backoff; a `Retry-After` above `maxDelay` returns the response at
+  once, since the wait would hold the worker that serves a client.
+- The result is the last attempt's response or exception. `RequestException` (the request itself
+  is wrong) and `CircuitOpenException` are never retried. Each retry is logged at `info` without
+  the query string.
+
+Retries run inside the request that needs the answer: with `timeout: 5.0` and three attempts a
+client can wait over 15 s. Keep `timeout`, `maxAttempts` and `maxDelay` small on the request path.
+
+`CircuitBreakerClient` keeps one circuit per origin (scheme, host, port):
+
+- **Closed**: calls go out; network failures and `statuses` are counted, any other response
+  resets the count. 429 is not a failure by default: the host is up and asks to slow down.
+- **Open** after `failures` in a row: calls fail at once with `CircuitOpenException` (a PSR-18
+  `NetworkExceptionInterface`, with the request and `$circuit`), without touching the network.
+  Opening is logged as a warning.
+- **Half-open** after `openFor` seconds: the first call is a probe and the others are refused for
+  another `openFor`; the probe's success closes the circuit, its failure opens it again.
+
+With `shared: true` and APCu loaded, the state is shared by every php-fpm child or FrankenPHP
+thread of the server, so the circuit opens after `failures` calls in total rather than in every
+worker; concurrent failures are counted approximately. Without APCu each worker has its own
+circuits. `CircuitBreaker` also works alone, for calls that are not HTTP:
+
+```php
+$breaker = new CircuitBreaker(new CircuitBreakerConfig(failures: 3), $cache);   // any PSR-16 store
+if (!$breaker->allow('search')) {
+    return $this->fallback();
+}
+try {
+    $result = $this->search->query($q);
+    $breaker->success('search');
+} catch (\Throwable $e) {
+    $breaker->failure('search');
+    throw $e;
+}
+$breaker->state('search');   // CircuitState::Closed, Open or HalfOpen
+```
+
 ## Worker mode
 
 The client holds no request state; a failed request leaves nothing behind. Per-worker

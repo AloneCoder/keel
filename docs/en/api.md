@@ -22,14 +22,15 @@ a new major version, with a deprecation in the previous minor where feasible.
 | Database (1.2) | `PdoConfig`, `PdoProvider`, `PdoCheck`, `DbalConfig`, `DbalProvider`, `DbalCheck` |
 | View (1.2) | `ViewRenderer`, `TwigConfig`, `TwigProvider`, `TwigRenderer`, `LatteConfig`, `LatteProvider`, `LatteRenderer` |
 | Cache (1.2) | `CacheConfig`, `CacheProvider`, `ArrayCache`, `ApcuCache`, `FileCache`, `InvalidKeyException` |
-| HttpClient (1.2) | `HttpClientConfig`, `HttpClientProvider`, `CurlClient`, `NetworkException`, `RequestException` |
+| HttpClient (1.2) | `HttpClientConfig`, `HttpClientProvider`, `CurlClient`, `NetworkException`, `RequestException`; from 1.5 `RetryingClient`, `RetryConfig`, `CircuitBreakerClient`, `CircuitBreaker`, `CircuitBreakerConfig`, `CircuitState`, `CircuitOpenException` |
 | JWT (1.4) | `Auth\Jwt\JwtAuthenticator`, `JwtConfig`, `JwtVerifier`, `Jwt`, `JwtKey`, `JwtException`, `KeySet` and its implementations |
 | Idempotency (1.4) | `IdempotencyMiddleware`, `IdempotencyConfig`, `Attribute\Idempotent` |
 | Output cache (1.4) | `Cache\Attribute\OutputCache`, `OutputCacheMiddleware`, `OutputCacheStore`, `OutputCacheConfig` |
+| Signed URLs (1.5) | `Auth\UrlSigner`, `SignedUrlConfig`, `SignedUrlStatus`, `SignedUrlGuard`, `Auth\Attribute\Signed`, `Session\CookieSigner::signature()` |
 
 **Stable formats.** The Problem Details JSON shape, the `errors` message format `"field: message"`,
 the `Set-Cookie` attributes of sessions, the console command names and arguments, the health
-report shape, the metric names and labels of `MetricsMiddleware`, the HMAC signing scheme.
+report shape, the metric names and labels of `MetricsMiddleware`, the HMAC signing scheme, the signed URL scheme (`expires` and `signature` query parameters).
 The OpenAPI document is a derived artifact: a minor release may describe the API more precisely.
 
 **Not covered.** Anything marked `@internal` (parsers, compilers, matchers, the reflection planner,

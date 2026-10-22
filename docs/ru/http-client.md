@@ -62,6 +62,81 @@ final class GeoClient
 - Один curl-handle на экземпляр клиента переиспользуется между запросами воркера, так что
   keep-alive соединения с одним хостом переживают запросы. После ошибки handle пересоздаётся.
 
+## Повторы и circuit breaker
+
+Два декоратора PSR-18 включаются из конфига, провайдер ставит их поверх `CurlClient` (повторы
+снаружи, breaker внутри, так что каждая попытка проходит через breaker). Собранные вручную, они
+оборачивают любой PSR-18 клиент, в том числе Guzzle.
+
+```php
+// config/http_client.php
+return new HttpClientConfig(
+    timeout: 5.0,
+    retry: new RetryConfig(
+        maxAttempts: 3,       // включая первую попытку
+        delay: 0.1,           // перед первым повтором, дальше x multiplier
+        maxDelay: 2.0,        // потолок одного ожидания, в том числе Retry-After
+        multiplier: 2.0,
+        jitter: true,         // ждать от половины до всей задержки
+        statuses: [408, 429, 500, 502, 503, 504],
+    ),
+    circuitBreaker: new CircuitBreakerConfig(
+        failures: 5,          // сбоев подряд, после которых цепь хоста размыкается
+        openFor: 30,          // секунд отказа, затем одна пробная попытка
+        window: 60,           // сбои забываются через столько секунд после последнего
+        statuses: [500, 502, 503, 504],
+        shared: true,         // состояние в APCu: воркеры сервера размыкают цепь вместе
+    ),
+);
+```
+
+`RetryingClient` повторяет запрос после сетевого сбоя или ответа из `statuses`:
+
+- Только запросы, которые безопасно повторить: `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`,
+  `TRACE` или любой метод с заголовком `Idempotency-Key` (на стороне сервера — `#[Idempotent]`).
+  Тело, которое нельзя перемотать, дважды не отправляется; перематываемое перематывается перед
+  каждой попыткой.
+- Ждёт `delay × multiplier^(n-1)`, не больше `maxDelay`, с джиттером. `Retry-After` (секунды
+  или HTTP-дата) заменяет backoff; `Retry-After` больше `maxDelay` сразу возвращает ответ:
+  ожидание держало бы воркер, который обслуживает клиента.
+- Результат — ответ или исключение последней попытки. `RequestException` (неверен сам запрос) и
+  `CircuitOpenException` не повторяются никогда. Каждый повтор пишется в лог уровнем `info`
+  без query string.
+
+Повторы выполняются внутри запроса, которому нужен ответ: при `timeout: 5.0` и трёх попытках
+клиент может ждать больше 15 с. На пути запроса держите `timeout`, `maxAttempts` и `maxDelay`
+маленькими.
+
+`CircuitBreakerClient` держит по цепи на origin (схема, хост, порт):
+
+- **Closed** (замкнута): вызовы идут; сетевые сбои и `statuses` считаются, любой другой ответ
+  обнуляет счёт. 429 по умолчанию не сбой: хост жив и просит притормозить.
+- **Open** (разомкнута) после `failures` сбоев подряд: вызовы сразу падают с
+  `CircuitOpenException` (PSR-18 `NetworkExceptionInterface`, с запросом и `$circuit`), не трогая
+  сеть. Размыкание пишется в лог как warning.
+- **Half-open** через `openFor` секунд: первый вызов — пробный, остальным отказывают ещё
+  `openFor`; успех пробы замыкает цепь, сбой снова размыкает.
+
+С `shared: true` и загруженным APCu состояние общее для всех дочерних процессов php-fpm или
+потоков FrankenPHP сервера, так что цепь размыкается после `failures` вызовов в сумме, а не в
+каждом воркере; одновременные сбои считаются приблизительно. Без APCu у каждого воркера свои
+цепи. `CircuitBreaker` работает и отдельно, для вызовов не по HTTP:
+
+```php
+$breaker = new CircuitBreaker(new CircuitBreakerConfig(failures: 3), $cache);   // любое хранилище PSR-16
+if (!$breaker->allow('search')) {
+    return $this->fallback();
+}
+try {
+    $result = $this->search->query($q);
+    $breaker->success('search');
+} catch (\Throwable $e) {
+    $breaker->failure('search');
+    throw $e;
+}
+$breaker->state('search');   // CircuitState::Closed, Open или HalfOpen
+```
+
 ## Worker mode
 
 Клиент не хранит состояние запроса; неудачный запрос ничего не оставляет. Переиспользование

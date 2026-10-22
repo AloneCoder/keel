@@ -168,6 +168,47 @@ $router->generate('users.show', ['id' => 5, 'page' => 2]);      // /api/users/5?
 `[^/]+` как `a%2Fb`, ровно так его увидит и матчер). Отсутствующий параметр, нарушение
 паттерна и неизвестное имя дают `RoutingException`.
 
+## Подписанные URL
+
+`Keel\Auth\UrlSigner` подписывает ссылки, которые сами дают доступ: скачивание, отписка,
+подтверждение email. Путь строит роутер, подпись — `CookieSigner` со своим назначением, а
+`#[Signed]` проверяет её на входе.
+
+```php
+// config/signed_url.php
+return static fn(Env $env): SignedUrlConfig => new SignedUrlConfig(
+    secret: $env->require('APP_SECRET'),       // от 32 символов
+    ttl: 86_400,                               // срок по умолчанию в секундах; null — бессрочно
+    baseUrl: 'https://app.example.com',        // для ссылок, уходящих из приложения, например в письма
+);
+```
+
+```php
+#[Get('/downloads/{id:\d+}', name: 'downloads.show')]
+#[Signed]                                       // 403 без верной и не истёкшей подписи
+public function download(int $id): Response { /* ... */ }
+
+$signer->route('downloads.show', ['id' => 5, 'format' => 'pdf'], expires: 3600);
+// https://app.example.com/downloads/5?format=pdf&expires=1767225600&signature=Xb3...
+$signer->sign('/reports/q3?inline=1', new \DateTimeImmutable('+1 day'));   // любой путь
+$signer->verify($url);                          // true / false
+$signer->status($request->getUri());            // SignedUrlStatus::Valid, Missing, Invalid, Expired
+```
+
+- Подпись покрывает путь и всю query string ровно в том виде, в каком она отправлена, вместе с
+  `expires`: добавленный, удалённый, переставленный или изменённый параметр либо более поздний
+  срок дают 403 `Invalid URL signature`; истёкший срок — `This link has expired`; отсутствие
+  подписи — `This URL must be signed`.
+- Схема, хост и `baseUrl` не подписываются: ссылка верна везде, где приложение получает тот же
+  путь. За прокси, который монтирует приложение под префиксом, укажите префикс в `baseUrl`
+  (`https://example.com/app`), и ссылки останутся верными.
+- `expires` — секунды от текущего момента или `DateTimeInterface`; имена `signature` и `expires`
+  в query зарезервированы. `purpose` (по умолчанию `signed-url`) отделяет эти подписи от cookie
+  сессии, подписанных тем же секретом.
+- Ссылка действует, пока не истечёт срок или не сменится секрет. Чтобы отзывать отдельные
+  ссылки, кладите в них что-то отзываемое (токен, версию) и проверяйте это в обработчике.
+- В OpenAPI у операций с `#[Signed]` есть query-параметры `expires` и `signature` и ответ 403.
+
 ## Ошибки конфигурации
 
 `Keel\Routing\Exception\RoutingException` (наследник `LogicException`): путь без ведущего

@@ -6,7 +6,9 @@ namespace Keel\OpenApi;
 
 use Keel\Auth\Attribute\Auth;
 use Keel\Auth\Attribute\Can;
+use Keel\Auth\Attribute\Signed;
 use Keel\Auth\Authentication;
+use Keel\Auth\UrlSigner;
 use Keel\Http\Attribute\BodyLimit;
 use Keel\Http\Attribute\Deprecated;
 use Keel\Http\Attribute\FromBody;
@@ -31,7 +33,7 @@ use Psr\Http\Message\ResponseInterface;
  * #[FromBody] parameters with their DTO schemas and validation rules, #[Status] and return
  * types or #[Response] attributes, #[Auth] security, #[RateLimit] and Problem Details errors,
  * #[Deprecated] (deprecated: true, x-sunset), #[Idempotent] (the Idempotency-Key header, 409
- * and 422) and #[BodyLimit] (413, 415).
+ * and 422), #[BodyLimit] (413, 415) and #[Signed] (the signature query parameters, 403).
  */
 final class Generator
 {
@@ -177,6 +179,23 @@ final class Generator
                 'schema' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 255],
             ];
         }
+        $signed = $route->option(Signed::KEY) === true;
+        if ($signed) {
+            $parameters[] = [
+                'name' => UrlSigner::EXPIRES,
+                'in' => 'query',
+                'required' => false,
+                'description' => 'Expiry of the signed link (unix time), part of the signed URL',
+                'schema' => ['type' => 'integer'],
+            ];
+            $parameters[] = [
+                'name' => UrlSigner::SIGNATURE,
+                'in' => 'query',
+                'required' => true,
+                'description' => 'Signature of the link, issued by the application',
+                'schema' => ['type' => 'string'],
+            ];
+        }
         if ($parameters !== []) {
             $operation['parameters'] = $parameters;
         }
@@ -196,6 +215,9 @@ final class Generator
                 if ((is_array($auth) && ($auth['roles'] ?? []) !== []) || is_array($can)) {
                     $responses[403] = self::problemResponse(is_array($can) ? 'Not allowed' : 'Insufficient role', $usesProblem);
                 }
+            }
+            if ($signed) {
+                $responses[403] ??= self::problemResponse('Missing, invalid or expired URL signature', $usesProblem);
             }
             if ($route->option(RateLimit::KEY) !== null) {
                 $responses[429] = self::problemResponse('Rate limit exceeded', $usesProblem);

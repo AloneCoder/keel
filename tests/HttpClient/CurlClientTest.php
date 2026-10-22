@@ -6,11 +6,16 @@ namespace Keel\Tests\HttpClient;
 
 use Keel\Container\Container;
 use Keel\Container\Definitions;
+use Keel\HttpClient\CircuitBreaker;
+use Keel\HttpClient\CircuitBreakerClient;
+use Keel\HttpClient\CircuitBreakerConfig;
 use Keel\HttpClient\CurlClient;
 use Keel\HttpClient\HttpClientConfig;
 use Keel\HttpClient\HttpClientProvider;
 use Keel\HttpClient\NetworkException;
 use Keel\HttpClient\RequestException;
+use Keel\HttpClient\RetryConfig;
+use Keel\HttpClient\RetryingClient;
 use Keel\Kernel\Kernel;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Request;
@@ -24,6 +29,11 @@ use Psr\Http\Client\ClientInterface;
 #[CoversClass(HttpClientProvider::class)]
 #[CoversClass(NetworkException::class)]
 #[CoversClass(RequestException::class)]
+#[CoversClass(RetryingClient::class)]
+#[CoversClass(RetryConfig::class)]
+#[CoversClass(CircuitBreakerClient::class)]
+#[CoversClass(CircuitBreaker::class)]
+#[CoversClass(CircuitBreakerConfig::class)]
 #[RequiresPhpExtension('curl')]
 final class CurlClientTest extends TestCase
 {
@@ -249,5 +259,28 @@ final class CurlClientTest extends TestCase
         $echo = self::echoed((string) $client->sendRequest(new Request('GET', self::$base . '/echo'))->getBody());
         self::assertIsArray($echo['headers']);
         self::assertSame('wired', $echo['headers']['user-agent']);
+    }
+
+    public function testProviderWrapsTheClientInRetriesAndACircuitBreaker(): void
+    {
+        $definitions = new Definitions();
+        Kernel::registerDefaults($definitions);
+        $definitions->instance(HttpClientConfig::class, new HttpClientConfig(
+            retry: new RetryConfig(maxAttempts: 3, delay: 0.0),
+            circuitBreaker: new CircuitBreakerConfig(failures: 3, shared: false),
+        ));
+        $definitions->load(new HttpClientProvider());
+        $client = new Container($definitions)->get(ClientInterface::class);
+        self::assertInstanceOf(RetryingClient::class, $client);
+
+        $id = bin2hex(random_bytes(6));
+        $file = sys_get_temp_dir() . '/keel-flaky-' . $id;
+        try {
+            $response = $client->sendRequest(new Request('GET', self::$base . '/flaky?fail=2&id=' . $id));
+            self::assertSame(200, $response->getStatusCode());
+            self::assertSame('ok after 2', (string) $response->getBody(), 'two 503s, then the third attempt went through');
+        } finally {
+            @unlink($file);
+        }
     }
 }

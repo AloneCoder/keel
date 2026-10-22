@@ -22,13 +22,15 @@
 | Database (1.2) | `PdoConfig`, `PdoProvider`, `PdoCheck`, `DbalConfig`, `DbalProvider`, `DbalCheck` |
 | View (1.2) | `ViewRenderer`, `TwigConfig`, `TwigProvider`, `TwigRenderer`, `LatteConfig`, `LatteProvider`, `LatteRenderer` |
 | Cache (1.2) | `CacheConfig`, `CacheProvider`, `ArrayCache`, `ApcuCache`, `FileCache`, `InvalidKeyException` |
-| HttpClient (1.2) | `HttpClientConfig`, `HttpClientProvider`, `CurlClient`, `NetworkException`, `RequestException` |
+| HttpClient (1.2) | `HttpClientConfig`, `HttpClientProvider`, `CurlClient`, `NetworkException`, `RequestException`; с 1.5 `RetryingClient`, `RetryConfig`, `CircuitBreakerClient`, `CircuitBreaker`, `CircuitBreakerConfig`, `CircuitState`, `CircuitOpenException` |
 | JWT (1.4) | `Auth\Jwt\JwtAuthenticator`, `JwtConfig`, `JwtVerifier`, `Jwt`, `JwtKey`, `JwtException`, `KeySet` и его реализации |
 | Idempotency (1.4) | `IdempotencyMiddleware`, `IdempotencyConfig`, `Attribute\Idempotent` |
 | Кэш вывода (1.4) | `Cache\Attribute\OutputCache`, `OutputCacheMiddleware`, `OutputCacheStore`, `OutputCacheConfig` |
+| Подписанные URL (1.5) | `Auth\UrlSigner`, `SignedUrlConfig`, `SignedUrlStatus`, `SignedUrlGuard`, `Auth\Attribute\Signed`, `Session\CookieSigner::signature()` |
 
 **Стабильные форматы.** Форма JSON Problem Details, формат сообщений `errors` вида `"поле: текст"`,
-атрибуты `Set-Cookie` сессий, имена и аргументы консольных команд.
+атрибуты `Set-Cookie` сессий, имена и аргументы консольных команд, схема подписанных URL
+(query-параметры `expires` и `signature`).
 
 **Не покрывается.** Всё с `@internal` (парсеры, компиляторы, матчеры, планировщик рефлексии,
 `AppBuilder`, `ErrorPage`, `DocTypes`, базовые классы генераторов), `AbstractCache` как база для

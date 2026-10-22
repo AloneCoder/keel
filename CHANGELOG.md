@@ -6,6 +6,35 @@ Until 1.0.0 minor versions may contain breaking changes.
 
 ## [Unreleased]
 
+The second wave of the ecosystem survey: resilience for outgoing calls (Polly, SmallRye Fault
+Tolerance, Hyperf, Fiber, tower) and signed URLs (Laravel, Roda `hmac_paths`). No public method
+was removed or renamed.
+
+### Added
+
+- **HttpClient**: `RetryingClient` + `RetryConfig`: a PSR-18 decorator that repeats requests after
+  a network failure or a transient status (408, 429, 500, 502, 503, 504) with exponential backoff
+  and jitter; only idempotent methods or requests with an `Idempotency-Key`, never a body that
+  cannot be rewound; `Retry-After` honoured up to `maxDelay`, a longer one returns the response.
+- **HttpClient**: `CircuitBreakerClient` + `CircuitBreaker` + `CircuitBreakerConfig` +
+  `CircuitState` + `CircuitOpenException`: one circuit per origin, opened after consecutive
+  failures, a single probe when half-open, state in APCu shared by the workers of a server (or
+  any PSR-16 store); `CircuitBreaker` also guards calls that are not HTTP.
+  `HttpClientConfig::$retry` and `$circuitBreaker` stack both over `CurlClient` in the provider.
+- **Auth**: signed URLs. `UrlSigner::route()` / `sign()` / `verify()` / `status()` +
+  `SignedUrlConfig` (secret, default ttl, base URL for links in emails, purpose) +
+  `#[Signed]` + `SignedUrlGuard` + `SignedUrlStatus`: path and query signed by `CookieSigner`
+  under their own purpose, optional expiry, 403 for a missing, altered or expired signature;
+  `expires` and `signature` appear as query parameters in OpenAPI. `keel:install signed-urls`.
+- **Session**: `CookieSigner::signature()`: the detached signature of a payload.
+
+### Changed
+
+- `HttpClientProvider` registers `ClientInterface` through a factory (`HttpClientProvider::create()`)
+  instead of an alias of `CurlClient`; without retry or circuit breaker settings it still resolves
+  to the `CurlClient` service.
+- `OpenApi\Generator` documents `#[Signed]`.
+
 ## [1.4.0] - 2026-10-22
 
 What the other ecosystems (Fastify, Hono, Express, Elysia, FastAPI, Starlette, Litestar, Flask,

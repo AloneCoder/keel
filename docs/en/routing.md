@@ -164,6 +164,47 @@ is `/users/5`. Each value is checked against its placeholder constraint, either 
 `a%2Fb`, exactly as the matcher will see it). A missing parameter, a pattern violation and an
 unknown name raise `RoutingException`.
 
+## Signed URLs
+
+`Keel\Auth\UrlSigner` signs links that grant access by themselves: downloads, unsubscribe,
+email confirmation. The path comes from the router, the signature from `CookieSigner` under
+its own purpose, and `#[Signed]` checks it on the way in.
+
+```php
+// config/signed_url.php
+return static fn(Env $env): SignedUrlConfig => new SignedUrlConfig(
+    secret: $env->require('APP_SECRET'),       // 32+ characters
+    ttl: 86_400,                               // default expiry in seconds; null = never
+    baseUrl: 'https://app.example.com',        // for links that leave the app, as in emails
+);
+```
+
+```php
+#[Get('/downloads/{id:\d+}', name: 'downloads.show')]
+#[Signed]                                       // 403 without a valid, unexpired signature
+public function download(int $id): Response { /* ... */ }
+
+$signer->route('downloads.show', ['id' => 5, 'format' => 'pdf'], expires: 3600);
+// https://app.example.com/downloads/5?format=pdf&expires=1767225600&signature=Xb3...
+$signer->sign('/reports/q3?inline=1', new \DateTimeImmutable('+1 day'));   // any path
+$signer->verify($url);                          // true / false
+$signer->status($request->getUri());            // SignedUrlStatus::Valid, Missing, Invalid, Expired
+```
+
+- The signature covers the path and the whole query string exactly as sent, `expires`
+  included: a parameter added, removed, reordered or changed, or a later expiry, gives 403
+  `Invalid URL signature`; a past one `This link has expired`; none `This URL must be signed`.
+- Scheme, host and `baseUrl` are not signed: the link is valid wherever the application receives
+  the same path. Behind a proxy that mounts the application under a prefix, put the prefix in
+  `baseUrl` (`https://example.com/app`) and the links stay valid.
+- `expires` is seconds from now or a `DateTimeInterface`; `signature` and `expires` are reserved
+  query parameter names. `purpose` (default `signed-url`) keeps these signatures apart from
+  session cookies signed with the same secret.
+- A link is valid until it expires or the secret changes. To revoke single links, put something
+  revocable in them (a token, a version) and check it in the handler.
+- OpenAPI lists `expires` and `signature` as query parameters of `#[Signed]` operations, with a
+  403 response.
+
 ## Configuration errors
 
 `Keel\Routing\Exception\RoutingException` (a `LogicException`): a path without a leading `/`,

@@ -101,7 +101,8 @@ Memcached, file storage and localization. 1.4 added what other ecosystems ship f
 security headers, body limits, trusted hosts, idempotency keys, Server-Timing, deprecation
 headers, streaming and Server-Sent Events, load shedding, lifecycle events, work after the
 response, a JWT/JWKS authenticator, an output cache with tags, `keel:install` and
-`keel:ai:init`. Next: feedback from real projects decides; queues and schedulers stay out of
+`keel:ai:init`. 1.5 adds HTTP-client retries with a circuit breaker and signed URLs. Next:
+feedback from real projects decides; queues and schedulers stay out of
 scope.
 
 License: MIT.

@@ -57,7 +57,9 @@ rejected), `Secure` automatically on https. `SameSite=None` always sends `Secure
 only right with `TrustedProxiesMiddleware` configured, so set `secure: true` explicitly otherwise.
 
 `CookieSigner` works on its own: `sign($value)` → `payload.signature`, `verify($cookie)` → the
-value or `null` on a bad signature. Good for "remember me" and signed links. Give every use its
+value or `null` on a bad signature; `signature($payload)` is the signature alone, for a payload
+that travels separately. Good for "remember me"; signed links have their own
+[`UrlSigner`](routing.md#signed-urls) built on it. Give every use its
 own purpose, `new CookieSigner($secret, 'remember-me')`: a value signed for one purpose does not
 verify under another, so a session id can never pass as a remember-me token. The default (empty)
 purpose is what the session middleware uses and what earlier versions signed with.
