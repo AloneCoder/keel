@@ -6,6 +6,8 @@ Until 1.0.0 minor versions may contain breaking changes.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-22
+
 What the other ecosystems (Fastify, Hono, Express, Elysia, FastAPI, Starlette, Litestar, Flask,
 Sanic, Gin, Echo, Fiber, Chi, Axum, Javalin, Quarkus, ASP.NET, Rails/Roda, Mezzio, Spiral,
 Tempest, Leaf, Flight) ship first-party and Keel lacked: security headers, request limits, trusted
@@ -95,6 +97,10 @@ and `Kernel::terminate()` only gained optional trailing parameters.
 ### Fixed
 
 - Docs: the built-in middleware table in `http.md` was cut in two by a paragraph.
+- Tests: the Latte view test failed when it ran first in a random order (Infection), so the
+  mutation workflow stopped before mutating anything; `keel:make:policy` gained its missing test
+  and coverage metadata now credits code the suite already ran (lines 88.5% to 90.9%).
+- `composer.json` branch alias moved from the stale `1.2.x-dev` to `1.4.x-dev`.
 
 ## [1.3.0] - 2026-10-22
 
