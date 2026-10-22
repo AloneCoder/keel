@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Keel\Http;
 
+use Keel\Http\Stream\IteratorStream;
 use Keel\Routing\Router;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -12,7 +13,7 @@ use Psr\Http\Message\StreamFactoryInterface;
 /**
  * Turns a handler's return value into a PSR-7 response:
  * ResponseInterface as is; null => 204; string => text/html; Redirect => 3xx with Location;
- * anything else => JSON.
+ * EventStream => Server-Sent Events; anything else => JSON.
  */
 final class Responder
 {
@@ -47,6 +48,10 @@ final class Responder
             return $this->redirect($location, $status ?? $result->status);
         }
 
+        if ($result instanceof EventStream) {
+            return $this->eventStream($result->events, $status ?? 200, $result->headers);
+        }
+
         return $this->json($result, $status ?? 200);
     }
 
@@ -60,6 +65,45 @@ final class Responder
         return $this->responses->createResponse($status)
             ->withHeader('Content-Type', $contentType)
             ->withBody($this->streams->createStream($body));
+    }
+
+    /**
+     * A response whose body is produced while it is sent: each chunk of $chunks (strings, typically
+     * yielded by a generator) is flushed to the client as soon as it exists. For NDJSON:
+     * $responder->stream(function () use ($rows) { foreach ($rows as $row) { yield json_encode($row) . "\n"; } }, 'application/x-ndjson').
+     *
+     * @param iterable<mixed, string|\Stringable>|\Closure(): iterable<mixed, string|\Stringable> $chunks
+     * @param array<string, string>                                                             $headers
+     */
+    public function stream(iterable|\Closure $chunks, string $contentType = 'application/octet-stream', int $status = 200, array $headers = []): ResponseInterface
+    {
+        $response = $this->responses->createResponse($status)
+            ->withHeader('Content-Type', $contentType)
+            ->withHeader('X-Accel-Buffering', 'no')
+            ->withBody(new IteratorStream($chunks));
+        foreach ($headers as $name => $value) {
+            $response = $response->withHeader($name, $value);
+        }
+
+        return $response;
+    }
+
+    /**
+     * Server-Sent Events: items are SseEvent objects, strings (sent as data) or JSON-encodable values.
+     * Sent with Cache-Control: no-cache and X-Accel-Buffering: no, so proxies pass events through.
+     *
+     * @param iterable<mixed, mixed>|\Closure(): iterable<mixed, mixed> $events
+     * @param array<string, string>                                     $headers
+     */
+    public function eventStream(iterable|\Closure $events, int $status = 200, array $headers = []): ResponseInterface
+    {
+        $chunks = static function () use ($events): \Generator {
+            foreach ($events instanceof \Closure ? $events() : $events as $event) {
+                yield ($event instanceof SseEvent ? $event : new SseEvent($event))->format();
+            }
+        };
+
+        return $this->stream($chunks, 'text/event-stream', $status, $headers + ['Cache-Control' => 'no-cache']);
     }
 
     /**

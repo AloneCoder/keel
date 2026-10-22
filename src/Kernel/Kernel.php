@@ -10,6 +10,7 @@ use Keel\Container\Definitions;
 use Keel\Http\ArgumentResolver;
 use Keel\Http\Pipeline;
 use Keel\Http\Responder;
+use Keel\Kernel\Event\ResponseSent;
 use Keel\Routing\Redirector;
 use Keel\Routing\Router;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -28,13 +29,16 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * HTTP kernel: exception handling -> global middleware -> routing -> route middleware -> controller.
- * One instance handles every request of a worker; terminate() resets per-request state.
+ * One instance handles every request of a worker; terminate() dispatches ResponseSent, runs the
+ * deferred tasks and resets per-request state.
  *
  * @phpstan-import-type MiddlewareEntry from \Keel\Routing\Attribute\MiddlewareProvider
  */
 final class Kernel implements RequestHandlerInterface
 {
     private readonly Pipeline $pipeline;
+
+    private readonly Lifecycle $lifecycle;
 
     /**
      * @param list<MiddlewareInterface|MiddlewareEntry> $middleware global middleware, in order: instances, class names or [class, arguments]
@@ -46,10 +50,11 @@ final class Kernel implements RequestHandlerInterface
         public readonly bool $debug = false,
     ) {
         $responder = $container->get(Responder::class);
+        $this->lifecycle = new Lifecycle($container);
 
         $this->pipeline = new Pipeline(
             [
-                new ExceptionHandlerMiddleware($responder, $debug, $container),
+                new ExceptionHandlerMiddleware($responder, $debug, $container, $this->lifecycle),
                 ...$middleware,
                 new RoutingMiddleware($router),
             ],
@@ -82,7 +87,7 @@ final class Kernel implements RequestHandlerInterface
     /**
      * Registers what the kernel needs unless the application already did (as a definition, an alias
      * or an instance under the interface id): nyholm/psr7 as every PSR-17 factory, the server request
-     * creator, Responder, ArgumentResolver and the Redirector behind #[Redirect] routes.
+     * creator, Responder, ArgumentResolver, the Redirector behind #[Redirect] routes and DeferredTasks.
      */
     public static function registerDefaults(Definitions $definitions): void
     {
@@ -118,6 +123,9 @@ final class Kernel implements RequestHandlerInterface
         if ($definitions->definition(Redirector::class) === null) {
             $definitions->set(Redirector::class);
         }
+        if ($definitions->definition(DeferredTasks::class) === null) {
+            $definitions->set(DeferredTasks::class);
+        }
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface
@@ -126,10 +134,32 @@ final class Kernel implements RequestHandlerInterface
     }
 
     /**
-     * Called by the runtime after the response was sent. Resets Resettable services.
+     * Called by the runtime after the response was sent: dispatches ResponseSent (when given the
+     * request and its response), runs the DeferredTasks, then resets Resettable services. The
+     * reset runs even when a step before it fails; listener and task failures are logged.
      */
-    public function terminate(): void
+    public function terminate(?ServerRequestInterface $request = null, ?ResponseInterface $response = null): void
     {
-        $this->container->reset();
+        try {
+            if ($request !== null && $response !== null) {
+                $this->lifecycle->notify(new ResponseSent($request, $response));
+            }
+            $deferred = $this->container->has(DeferredTasks::class) ? $this->container->get(DeferredTasks::class) : null;
+            if ($deferred instanceof DeferredTasks && $deferred->pending() > 0) {
+                $deferred->run($this->lifecycle->logger());
+            }
+        } finally {
+            $this->container->reset();
+        }
+    }
+
+    /**
+     * Dispatches an event on the application's PSR-14 dispatcher when anyone listens to it; a
+     * no-op without a dispatcher. The worker runtimes send WorkerStarted and WorkerStopping
+     * through it. Listener exceptions propagate.
+     */
+    public function dispatch(object $event): void
+    {
+        $this->lifecycle->dispatch($event);
     }
 }

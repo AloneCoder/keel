@@ -6,6 +6,96 @@ Until 1.0.0 minor versions may contain breaking changes.
 
 ## [Unreleased]
 
+What the other ecosystems (Fastify, Hono, Express, Elysia, FastAPI, Starlette, Litestar, Flask,
+Sanic, Gin, Echo, Fiber, Chi, Axum, Javalin, Quarkus, ASP.NET, Rails/Roda, Mezzio, Spiral,
+Tempest, Leaf, Flight) ship first-party and Keel lacked: security headers, request limits, trusted
+hosts, idempotency keys, Server-Timing, deprecation headers, streaming and Server-Sent Events,
+load shedding, lifecycle events, work after the response, JWT/JWKS, a server-side output cache,
+a component installer and AI-agent docs. No public method was removed or renamed; constructors
+and `Kernel::terminate()` only gained optional trailing parameters.
+
+### Added
+
+- **HTTP**: `SecurityHeadersMiddleware` + `SecurityHeadersConfig` (HSTS on HTTPS requests only,
+  CSP or CSP report-only, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`
+  from a feature map, COOP, CORP, extra headers; `SecurityHeadersConfig::api()` for JSON-only
+  services); headers the response already has are kept.
+- **HTTP**: `TrustedHostsMiddleware` + `TrustedHostsConfig`: 400 for a host outside the allowlist
+  (exact names, `*.domain` at any depth, IP literals, `*`).
+- **HTTP**: `BodyLimitMiddleware` + `BodyLimitConfig` + `#[BodyLimit('10M', contentTypes: [...])]`:
+  413 for a `Content-Length` above the limit, a `LimitedStream` that throws 413 while reading a
+  chunked body past it, 415 for a media type outside the patterns (`type/*`, `type/*+json`). The
+  global middleware reads the route's attribute before routing, so a route can raise the limit.
+- **HTTP**: `ServerTimingMiddleware` + `ServerTimingConfig` + `ServerTiming` (a per-request
+  collector injected by type: `start()`/`stop()`, `measure()`, `add()`): `Server-Timing` with the
+  handler's metrics and the total, optional `X-Response-Time` and `Timing-Allow-Origin`.
+- **HTTP**: `#[Deprecated(since, sunset, link, successor)]` + `DeprecationMiddleware`:
+  `Deprecation` (RFC 9745), `Sunset` (RFC 8594) and `Link` rel `deprecation` / `successor-version`;
+  OpenAPI `deprecated: true` and `x-sunset`; `keel:routes` marks the handler.
+- **HTTP**: streaming responses. `EventStream` as a handler return value (Server-Sent Events from
+  `SseEvent` objects, strings or JSON values, `SseEvent::comment()` heartbeats),
+  `Responder::stream()` and `Responder::eventStream()`, `Http\Stream\IteratorStream` (lazy,
+  chunk by chunk, closing ends the generator). `SapiEmitter` flushes every chunk of a
+  non-seekable body and stops when the client disconnects; `RoadRunnerRuntime` sends such bodies
+  as RoadRunner stream frames.
+- **HTTP**: `ContentTooLargeException` (413), `UnsupportedMediaTypeException` (415),
+  `ServiceUnavailableException` (503); `SapiEmitter::finish()`.
+- **Idempotency** (`Keel\Idempotency`): `IdempotencyMiddleware` + `IdempotencyConfig` +
+  `#[Idempotent(required, ttl)]`: responses replayed for a repeated `Idempotency-Key` with
+  `Idempotent-Replayed: true`, 422 for the key on a different request, 409 while the first runs
+  (atomic lock in `CounterStorage`), keys released after a failure and scoped to the principal or
+  the `Authorization` header; the header, 409 and 422 appear in OpenAPI.
+- **Runtime**: `LoadSheddingMiddleware` + `LoadSheddingConfig`: 503 with `Retry-After` while too
+  many requests are in flight across the workers sharing APCu (`InFlightCounter`,
+  `ApcuInFlightCounter`, `LocalInFlightCounter`), a request queued too long in front of PHP
+  (`X-Request-Start` / `X-Queue-Start`), the load average is too high or too little memory is
+  left (cgroup v2, `MemAvailable`); probe paths exempt.
+- **Kernel**: PSR-14 lifecycle events `RequestReceived`, `ExceptionRaised`, `ResponseSent`,
+  `WorkerStarted`, `WorkerStopping` (`Keel\Kernel\Event`), built only when a listener applies;
+  `Kernel::dispatch()`; `ListenerProvider::hasListenersFor()`.
+- **Kernel**: `DeferredTasks::defer()`: closures run by `Kernel::terminate()` after the response
+  was sent (php-fpm and FrankenPHP finish the request first), failures logged, registered by
+  `Kernel::registerDefaults()`.
+- **Auth**: `Jwt\JwtAuthenticator` + `JwtConfig` with `JwtVerifier`, `Jwt` (encode, parse),
+  `JwtKey` (secrets, PEM, JWK), `StaticKeySet`, `JwksKeySet` (PSR-18 fetch, PSR-16 sharing,
+  rate-limited refresh on an unknown `kid`, stale keys kept on failure) and `ChainKeySet`;
+  HS/RS/ES 256/384/512 and EdDSA without a third-party library; algorithm allowlist, key-type
+  checks against algorithm confusion, `crit` refused, `exp`/`nbf`/`iat` with leeway, issuer,
+  audience and required claims; roles from a dotted claim path, scopes from `scope`/`scp`.
+- **Cache**: `#[OutputCache(ttl, tags, varyByQuery, varyByHeaders, varyByPrincipal)]` +
+  `OutputCacheMiddleware` + `OutputCacheStore::invalidateTags()` + `OutputCacheConfig`: whole
+  responses served from PSR-16 with tag versions (works on any store, evicted versions read as
+  stale), `X-Cache` and `Age`, placeholders in tags; authenticated requests are cached only per
+  principal, never shared.
+- **Console**: `keel:install <component>`: `composer require` for missing packages, providers
+  appended to `config/services.php` and middleware to `config/http.php` (token-based edit that
+  keeps comments and layout), starter config files; 21 components, dependencies between them,
+  `--dry-run`, `--no-composer`.
+- **Console**: `keel:ai:init`: `AGENTS.md` for coding agents built from the application (stack,
+  commands, layout, worker-mode rules, middleware, providers, routes, the docs in `vendor/`) and
+  `public/llms.txt` describing the HTTP API from the OpenAPI document.
+- `RouteMatch::of($request, ?Router)`: the route match before or after routing, for global
+  middleware that reads route options.
+
+### Changed
+
+- `Kernel::terminate(?ServerRequestInterface $request = null, ?ResponseInterface $response = null)`
+  dispatches `ResponseSent` and runs the deferred tasks before `Container::reset()`. The
+  runtimes and `TestClient` pass the request and the response that was sent.
+- `FpmRuntime` with its default emitter finishes the request for the client
+  (`fastcgi_finish_request()` and friends) before `Kernel::terminate()`.
+- `FrankenPhpRuntime` calls `Kernel::terminate()` after `frankenphp_handle_request()` returned,
+  once the response is complete, instead of inside the request handler.
+- `ExceptionHandlerMiddleware` dispatches `RequestReceived` and `ExceptionRaised` when it has a
+  container (new optional fourth constructor parameter).
+- `OpenApi\Generator` takes an optional `IdempotencyConfig` and documents `#[Deprecated]`,
+  `#[Idempotent]` and `#[BodyLimit]`.
+- The `TestClient` terminate closure receives the request and the response.
+
+### Fixed
+
+- Docs: the built-in middleware table in `http.md` was cut in two by a paragraph.
+
 ## [1.3.0] - 2026-10-22
 
 Hardening after a full code review, operations tooling (`keel:doctor`, container diagnostics,

@@ -10,10 +10,10 @@
 |---|---|
 | Container | `Definitions`, `Definition`, `Container`, `Compiler`, `ContainerInterface`, `Resettable`, `ServiceProvider`, `Ref`, классы `Attribute\*` и `Exception\*` |
 | Routing | `Router`, `Route`, `RouteMatch`, `MatchResult`, `MatchStatus`, классы `Attribute\*`, `Exception\RoutingException` |
-| HTTP | `Pipeline`, `CallableHandler`, `Responder`, `ArgumentResolver`, `Hydrator`, `EmitterInterface`, `SapiEmitter`, классы `Attribute\*`, `Exception\*` и `Middleware\*` |
+| HTTP | `Pipeline`, `CallableHandler`, `Responder`, `ArgumentResolver`, `Hydrator`, `EmitterInterface`, `SapiEmitter`, классы `Attribute\*`, `Exception\*` и `Middleware\*`; с 1.4 `ServerTiming`, `EventStream`, `SseEvent`, `Stream\IteratorStream` |
 | Validation | `Rule` и все атрибуты-правила |
-| Kernel | `Kernel`, `ExceptionHandlerMiddleware`, `ProblemDetails` |
-| Runtime | `RuntimeInterface`, `Runtime`, `FpmRuntime`, `FrankenPhpRuntime`, `RoadRunnerRuntime` |
+| Kernel | `Kernel`, `ExceptionHandlerMiddleware`, `ProblemDetails`; с 1.4 `DeferredTasks` и классы `Event\*` |
+| Runtime | `RuntimeInterface`, `Runtime`, `FpmRuntime`, `FrankenPhpRuntime`, `RoadRunnerRuntime`, `MemoryGuard`; с 1.4 `LoadSheddingMiddleware`, `LoadSheddingConfig`, `InFlightCounter` и его реализации |
 | App | `App` (кроме членов с `@internal`), `Config\*`, `Discovery\DiscoveryInterface`, `Discoverer` и встроенные discovery, `Event\*`, `Log\*`, `Session\*`, `Testing\*`, `Console\ConsoleFactory` |
 | Auth (1.1) | `Principal`, `Identity`, `Authenticator`, `PrincipalResolver`, `HmacSecrets`, `SecurityScheme`, встроенные аутентификаторы, `Authentication`, `AuthMiddleware`, `AuthGuard`, `AuthConfig`, `Attribute\Auth` |
 | RateLimit (1.1) | `Attribute\RateLimit`, `RateLimiter`, `RateLimitResult`, `RateLimitGuard`, `CounterStorage` и его реализации |
@@ -23,6 +23,9 @@
 | View (1.2) | `ViewRenderer`, `TwigConfig`, `TwigProvider`, `TwigRenderer`, `LatteConfig`, `LatteProvider`, `LatteRenderer` |
 | Cache (1.2) | `CacheConfig`, `CacheProvider`, `ArrayCache`, `ApcuCache`, `FileCache`, `InvalidKeyException` |
 | HttpClient (1.2) | `HttpClientConfig`, `HttpClientProvider`, `CurlClient`, `NetworkException`, `RequestException` |
+| JWT (1.4) | `Auth\Jwt\JwtAuthenticator`, `JwtConfig`, `JwtVerifier`, `Jwt`, `JwtKey`, `JwtException`, `KeySet` и его реализации |
+| Idempotency (1.4) | `IdempotencyMiddleware`, `IdempotencyConfig`, `Attribute\Idempotent` |
+| Кэш вывода (1.4) | `Cache\Attribute\OutputCache`, `OutputCacheMiddleware`, `OutputCacheStore`, `OutputCacheConfig` |
 
 **Стабильные форматы.** Форма JSON Problem Details, формат сообщений `errors` вида `"поле: текст"`,
 атрибуты `Set-Cookie` сессий, имена и аргументы консольных команд.

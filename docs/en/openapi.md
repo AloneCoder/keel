@@ -45,6 +45,9 @@ to a copy you host.
 | `Page` return type | the pagination envelope (`items`, `page`, `perPage`, `total`, `pages`) with the element type from `@return Page<Dto>` or `#[Response(type: Page::class, items: Dto::class)]` |
 | `#[Auth]`, `#[Can]` | `security` with every configured authenticator's scheme, plus 401 (and 403 with roles or an ability) |
 | `#[RateLimit]` | a 429 response |
+| `#[Deprecated]` | `deprecated: true`, and `x-sunset` with the sunset date |
+| `#[Idempotent]` | the `Idempotency-Key` header parameter (required with `required: true`), 409 and 422 responses |
+| `#[BodyLimit]` | 413 when it sets a size, 415 when it lists media types |
 | body or parameters present | a 400 response with the `Problem` schema |
 
 Operation ids come from the route name, else `<Controller><Method>` (`userShow`); tags from the

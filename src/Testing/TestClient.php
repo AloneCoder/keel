@@ -8,6 +8,8 @@ use Keel\App\App;
 use Keel\Kernel\Kernel;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Uri;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
@@ -16,7 +18,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   $client = TestClient::forApp(App::boot(__DIR__ . '/..', new Env(['APP_ENV' => 'test'])));
  *   $client->json('POST', '/api/users', ['name' => 'Ann'])->assertStatus(201)->assertJson(['name' => 'Ann']);
  *
- * Every request ends with Kernel::terminate(), exactly like a worker does.
+ * Every request ends with Kernel::terminate(request, response), exactly like a worker does:
+ * ResponseSent listeners and deferred tasks have run when the TestResponse comes back.
  */
 final class TestClient
 {
@@ -30,7 +33,8 @@ final class TestClient
     private array $server = ['REMOTE_ADDR' => '127.0.0.1', 'SERVER_NAME' => 'localhost'];
 
     /**
-     * @param (\Closure(): void)|null $terminate called after every request
+     * @param (\Closure(ServerRequestInterface, ResponseInterface|null): void)|null $terminate called after every request
+     *                                                                                  with the request and its response (null when handling threw)
      */
     public function __construct(
         private readonly RequestHandlerInterface $handler,
@@ -154,10 +158,13 @@ final class TestClient
             $request = $request->withParsedBody($body);
         }
 
+        $response = null;
         try {
-            return new TestResponse($this->handler->handle($request));
+            $response = $this->handler->handle($request);
+
+            return new TestResponse($response);
         } finally {
-            ($this->terminate)?->__invoke();
+            ($this->terminate)?->__invoke($request, $response);
         }
     }
 }

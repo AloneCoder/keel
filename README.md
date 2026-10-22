@@ -32,8 +32,10 @@ php examples/hello/bin/console keel:routes
 
 The console ships `keel:routes`, `keel:compile`, `keel:cache-clear`, `keel:debug:container`, `keel:doctor`,
 `keel:preload`, `keel:openapi`, `keel:serve` (built-in server or FrankenPHP worker mode with
-`--watch`) and the `keel:make:*` generators for controllers, commands, middleware, listeners,
-health checks, authenticators and policies; see [Application](docs/en/app.md).
+`--watch`), `keel:install` (a component's package, provider, middleware and config in one step),
+`keel:ai:init` (`AGENTS.md` and `llms.txt`) and the `keel:make:*` generators for controllers,
+commands, middleware, listeners, health checks, authenticators and policies; see
+[Application](docs/en/app.md).
 
 Requirements: PHP >= 8.4.
 
@@ -95,7 +97,10 @@ cache and a PSR-18 client on curl; 1.2.1 added the health-check and authenticato
 widened mutation testing. 1.3 hardened the code after a full review, added `keel:doctor`, and
 closed the gaps against Slim and Lumen: optional path segments, redirects, route groups, HTTP
 caching, CSRF, policies, middleware with arguments, the `Input` reader, log channels, Redis and
-Memcached, file storage and localization. Next: feedback from real projects decides; queues and
-schedulers stay out of scope.
+Memcached, file storage and localization. The next release (see Unreleased in the changelog)
+adds what other ecosystems ship first-party: security headers, body limits, trusted hosts,
+idempotency keys, Server-Timing, deprecation headers, streaming and Server-Sent Events, load
+shedding, lifecycle events, work after the response, a JWT/JWKS authenticator, an output cache
+with tags, `keel:install` and `keel:ai:init`. Queues and schedulers stay out of scope.
 
 License: MIT.

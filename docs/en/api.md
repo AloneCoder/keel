@@ -10,10 +10,10 @@ a new major version, with a deprecation in the previous minor where feasible.
 |---|---|
 | Container | `Definitions`, `Definition`, `Container`, `Compiler`, `ContainerInterface`, `Resettable`, `ServiceProvider`, `Ref`, the `Attribute\*` classes, the `Exception\*` classes |
 | Routing | `Router`, `Route`, `RouteMatch`, `MatchResult`, `MatchStatus`, the `Attribute\*` classes, `Exception\RoutingException` |
-| HTTP | `Pipeline`, `CallableHandler`, `Responder`, `ArgumentResolver`, `Hydrator`, `EmitterInterface`, `SapiEmitter`, the `Attribute\*`, `Exception\*` and `Middleware\*` classes |
+| HTTP | `Pipeline`, `CallableHandler`, `Responder`, `ArgumentResolver`, `Hydrator`, `EmitterInterface`, `SapiEmitter`, the `Attribute\*`, `Exception\*` and `Middleware\*` classes; from 1.4 `ServerTiming`, `EventStream`, `SseEvent`, `Stream\IteratorStream` |
 | Validation | `Rule` and every rule attribute |
-| Kernel | `Kernel`, `ExceptionHandlerMiddleware`, `ProblemDetails` |
-| Runtime | `RuntimeInterface`, `Runtime`, `FpmRuntime`, `FrankenPhpRuntime`, `RoadRunnerRuntime` |
+| Kernel | `Kernel`, `ExceptionHandlerMiddleware`, `ProblemDetails`; from 1.4 `DeferredTasks` and the `Event\*` classes |
+| Runtime | `RuntimeInterface`, `Runtime`, `FpmRuntime`, `FrankenPhpRuntime`, `RoadRunnerRuntime`, `MemoryGuard`; from 1.4 `LoadSheddingMiddleware`, `LoadSheddingConfig`, `InFlightCounter` and its implementations |
 | App | `App` (except `@internal` members), `Config\*`, `Discovery\DiscoveryInterface`, `Discoverer` and the built-in discoveries, `Event\*`, `Log\*`, `Session\*`, `Testing\*`, `Console\ConsoleFactory` |
 | Auth (1.1) | `Principal`, `Identity`, `Authenticator`, `PrincipalResolver`, `HmacSecrets`, `SecurityScheme`, the built-in authenticators, `Authentication`, `AuthMiddleware`, `AuthGuard`, `AuthConfig`, `Attribute\Auth` |
 | RateLimit (1.1) | `Attribute\RateLimit`, `RateLimiter`, `RateLimitResult`, `RateLimitGuard`, `CounterStorage` and its implementations |
@@ -23,6 +23,9 @@ a new major version, with a deprecation in the previous minor where feasible.
 | View (1.2) | `ViewRenderer`, `TwigConfig`, `TwigProvider`, `TwigRenderer`, `LatteConfig`, `LatteProvider`, `LatteRenderer` |
 | Cache (1.2) | `CacheConfig`, `CacheProvider`, `ArrayCache`, `ApcuCache`, `FileCache`, `InvalidKeyException` |
 | HttpClient (1.2) | `HttpClientConfig`, `HttpClientProvider`, `CurlClient`, `NetworkException`, `RequestException` |
+| JWT (1.4) | `Auth\Jwt\JwtAuthenticator`, `JwtConfig`, `JwtVerifier`, `Jwt`, `JwtKey`, `JwtException`, `KeySet` and its implementations |
+| Idempotency (1.4) | `IdempotencyMiddleware`, `IdempotencyConfig`, `Attribute\Idempotent` |
+| Output cache (1.4) | `Cache\Attribute\OutputCache`, `OutputCacheMiddleware`, `OutputCacheStore`, `OutputCacheConfig` |
 
 **Stable formats.** The Problem Details JSON shape, the `errors` message format `"field: message"`,
 the `Set-Cookie` attributes of sessions, the console command names and arguments, the health

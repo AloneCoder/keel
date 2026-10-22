@@ -18,14 +18,15 @@ $kernel = Kernel::build(
     debug: $env === 'dev',
 );
 $response = $kernel->handle($request);    // ServerRequestInterface → ResponseInterface
-$kernel->terminate();                     // after the response is sent: Container::reset()
+$kernel->terminate($request, $response);  // after sending: ResponseSent, deferred tasks, Container::reset()
 ```
 
 `Kernel::build()` registers `Psr17Factory` under every PSR-17 interface, `Responder`,
 `ArgumentResolver` and `Router` in the container unless the application already did. With a
 compiled container and a route cache use the constructor
 `new Kernel($container, $router, $middleware, $debug)`; call `Kernel::registerDefaults()`
-before compiling.
+before compiling. `terminate()` dispatches `ResponseSent`, runs the `DeferredTasks` and resets
+the services; see [Runtimes](runtime.md#lifecycle-events).
 
 `Pipeline` is a PSR-15 handler: middleware run in declaration order (FIFO); class names are
 resolved from the container on every request, so the container owns their lifetime: a shared
@@ -135,7 +136,52 @@ the defaults or the upper bound.
 | `null` | 204 without body |
 | `string` | `text/html; charset=utf-8` |
 | `Keel\Http\Redirect` | 3xx with `Location`: `Redirect::to('/login')`, `Redirect::route('users.show', ['id' => 5], 303)`, see [Routing](routing.md#redirects) |
+| `Keel\Http\EventStream` | `text/event-stream`, produced while it is sent, see [Streaming](#streaming-and-server-sent-events) |
 | array, `JsonSerializable`, object | `application/json` with `JSON_UNESCAPED_UNICODE`, `JSON_UNESCAPED_SLASHES`, `JSON_PRESERVE_ZERO_FRACTION` |
+
+## Streaming and Server-Sent Events
+
+```php
+#[Get('/orders/{id}/progress')]
+public function progress(int $id): EventStream
+{
+    return new EventStream(function () use ($id) {
+        foreach ($this->tracker->follow($id) as $step) {
+            yield new SseEvent($step, event: 'progress', id: (string) $step->sequence);
+        }
+        yield new SseEvent('done', event: 'end');
+    });
+}
+
+#[Get('/orders/export')]
+public function export(Responder $responder): ResponseInterface
+{
+    return $responder->stream(function () {
+        foreach ($this->orders->cursor() as $order) {
+            yield json_encode($order) . "\n";
+        }
+    }, 'application/x-ndjson');
+}
+```
+
+The body is an `IteratorStream`: nothing runs until the emitter reads it, and every chunk goes to
+the client as soon as the generator yields it. `EventStream` items are `SseEvent` objects
+(`data`, `event`, `id`, `retry`, `comment`), strings (sent as `data`) or anything JSON-encodable;
+`SseEvent::comment('ping')` is the usual heartbeat that keeps proxies from closing an idle
+connection. Event streams carry `Cache-Control: no-cache` and `X-Accel-Buffering: no`, so nginx
+passes events through instead of buffering them.
+
+- `SapiEmitter` flushes PHP's output buffers after every chunk and, once `connection_aborted()`
+  reports the client gone, stops and closes the body, which ends the generator (its `finally`
+  runs). Keep `zlib.output_compression` off and make sure the proxy does not buffer.
+- `RoadRunnerRuntime` sends a non-seekable body as a RoadRunner stream, one frame per chunk
+  (RoadRunner 2023.3 or newer); every other body still goes out in one frame.
+- The status line and headers are sent before the generator runs: an exception it throws is
+  logged by the runtime as critical and cuts the response short. Catch what you can inside.
+- An open stream holds a worker (a php-fpm child, a FrankenPHP thread, a RoadRunner worker) until
+  it ends. Size the pool for the streams you expect and keep capacity for ordinary requests with
+  `LoadSheddingMiddleware` (`maxInFlight`, see [Runtimes](runtime.md#load-shedding)).
+- `HttpCacheMiddleware`, `#[OutputCache]` and idempotency keys leave streamed bodies alone.
 
 ## Errors: RFC 9457 Problem Details
 
@@ -147,7 +193,8 @@ the defaults or the upper bound.
 ```
 
 - `Keel\Http\Exception\HttpException` and its subclasses (`BadRequest`, `Unauthorized`,
-  `Forbidden`, `NotFound`, `MethodNotAllowed`, `Conflict`, `UnprocessableContent`) set the
+  `Forbidden`, `NotFound`, `MethodNotAllowed`, `Conflict`, `ContentTooLarge`,
+  `UnsupportedMediaType`, `UnprocessableContent`, `TooManyRequests`, `ServiceUnavailable`) set the
   status, headers (such as `Allow`, `WWW-Authenticate`) and a client-safe message in `detail`;
   `errors` is added when present.
 - Any other exception is a 500 with the title "Internal Server Error" and no `detail`; it is
@@ -202,17 +249,46 @@ Listed in `HttpConfig`; their settings are plain config objects in `config/`:
 | `TrustedProxiesMiddleware` | `TrustedProxiesConfig` | applies `X-Forwarded-For/Proto/Host/Port` only from trusted CIDRs; client IP in the `client_ip` attribute |
 | `HttpCacheMiddleware` | `HttpCacheConfig` | `Cache-Control` and `ETag` for 200 responses to GET/HEAD, 304 on `If-None-Match` / `If-Modified-Since`; see below |
 | `CsrfMiddleware` | `CsrfConfig` | synchronizer token on top of the session, see [Sessions](session.md#csrf-protection) |
+| `SecurityHeadersMiddleware` | `SecurityHeadersConfig` | HSTS (HTTPS only), CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, COOP and CORP; see below |
+| `TrustedHostsMiddleware` | `TrustedHostsConfig` | 400 for a host outside the allowlist; see below |
+| `BodyLimitMiddleware` | `BodyLimitConfig` | 413 above the size limit, 415 for a media type not listed; `#[BodyLimit]` per route |
+| `ServerTimingMiddleware` | `ServerTimingConfig` | `Server-Timing` with the total and what handlers measured, optionally `X-Response-Time` |
+| `IdempotencyMiddleware` | `IdempotencyConfig` | stored responses for a repeated `Idempotency-Key`; `#[Idempotent]` per route |
+| `LoadSheddingMiddleware` | `LoadSheddingConfig` | 503 with `Retry-After` under overload, see [Runtimes](runtime.md#load-shedding) |
+| `MethodOverrideMiddleware` | — | `POST` + `X-HTTP-Method-Override` → `PUT`/`PATCH`/`DELETE` |
+| `AuthMiddleware` | `AuthConfig` | authenticates requests carrying credentials, see [Authentication](auth.md) |
+| `HealthMiddleware` | `HealthConfig` | `/health` and `/health/live`, see [Health and metrics](observability.md) |
+| `MetricsMiddleware` | `MetricsConfig` | Prometheus metrics and `/metrics` |
+| `OpenApiMiddleware` | `OpenApiConfig` | `/openapi.json` and `/docs`, see [OpenAPI](openapi.md) |
+
+Route attributes add their own middleware: `#[Deprecated]` adds `DeprecationMiddleware` (below),
+`#[OutputCache]` adds `OutputCacheMiddleware` (see [Cache](cache.md#output-cache)).
 
 `TrustedProxiesMiddleware` takes the rightmost `X-Forwarded-For` address that is not itself a
 trusted proxy. When every hop is trusted, as with `proxies: ['*']`, it takes the rightmost valid
 address, the one appended by the proxy next to us, never the leftmost entry, which is whatever the
 client sent. A trusted `X-Forwarded-Proto` that changes the scheme also drops the port of the
 listening socket unless `X-Forwarded-Port` or a port in `X-Forwarded-Host` says otherwise.
-| `MethodOverrideMiddleware` | — | `POST` + `X-HTTP-Method-Override` → `PUT`/`PATCH`/`DELETE` |
-| `AuthMiddleware` | `AuthConfig` | authenticates requests carrying credentials, see [Authentication](auth.md) |
-| `HealthMiddleware` | `HealthConfig` | `/health` and `/health/live`, see [Health and metrics](observability.md) |
-| `MetricsMiddleware` | `MetricsConfig` | Prometheus metrics and `/metrics` |
-| `OpenApiMiddleware` | `OpenApiConfig` | `/openapi.json` and `/docs`, see [OpenAPI](openapi.md) |
+
+The order of the list matters. One that works for an API behind a proxy:
+
+```php
+return new HttpConfig([
+    TrustedProxiesMiddleware::class,    // scheme, host and client IP as the client saw them
+    HealthMiddleware::class,            // probes: any Host, never shed
+    MetricsMiddleware::class,
+    LoadSheddingMiddleware::class,
+    TrustedHostsMiddleware::class,
+    ServerTimingMiddleware::class,      // measures everything below
+    OpenApiMiddleware::class,           // before the strict CSP, its HTML page loads a script
+    SecurityHeadersMiddleware::class,
+    CorsMiddleware::class,
+    BodyLimitMiddleware::class,
+    RequestIdMiddleware::class,
+    AuthMiddleware::class,
+    IdempotencyMiddleware::class,       // after auth: keys are per principal
+]);
+```
 
 ### HTTP caching
 
@@ -244,9 +320,134 @@ and therefore sees only the config; the attribute is what makes settings per rou
 reads the whole body, so leave `etag` off for large downloads and streams (a non-seekable body
 is skipped anyway).
 
+### Security headers
+
+```php
+// config/security_headers.php
+return SecurityHeadersConfig::api();   // JSON only: CSP "default-src 'none'; frame-ancestors 'none'"
+
+return new SecurityHeadersConfig(
+    contentSecurityPolicy: "default-src 'self'; img-src 'self' data:",
+    permissionsPolicy: ['camera' => [], 'geolocation' => ['self']],   // camera=(), geolocation=(self)
+);
+```
+
+The defaults: `Strict-Transport-Security: max-age=31536000; includeSubDomains` on HTTPS requests
+only (browsers ignore it over plain HTTP; behind a TLS-terminating proxy the scheme comes from
+`TrustedProxiesMiddleware`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin` and `Cross-Origin-Opener-Policy: same-origin`.
+CSP (optionally report-only), `Permissions-Policy` and `Cross-Origin-Resource-Policy` stay off
+until configured; set `hstsPreload` only after submitting the domain to the preload list. A
+header the response already has is kept, so one page (an HTML report, the API reference) can
+send its own policy. `X-Powered-By` comes from PHP itself: set `expose_php = Off`.
+
+### Trusted hosts
+
+```php
+// config/trusted_hosts.php
+return new TrustedHostsConfig(['api.example.com', '*.example.com']);
+```
+
+A request for any other host gets 400 before routing, so a forged `Host` never ends up in
+generated URLs, redirects or password-reset links. `*.example.com` covers subdomains at any depth
+but not `example.com` itself; IP literals (`10.0.0.5`, `[::1]`) and `*` are allowed. The host is
+read from the request URI, after `TrustedProxiesMiddleware` applied a trusted `X-Forwarded-Host`.
+Probes that address a pod by its IP need that IP in the list, or `HealthMiddleware` earlier in
+`HttpConfig`.
+
+### Request body limits
+
+```php
+// config/body_limit.php: every request with a body
+return new BodyLimitConfig(maxBytes: '1M', contentTypes: ['application/json', 'application/*+json']);
+
+#[Post('/avatars')]
+#[BodyLimit('20M', contentTypes: ['multipart/form-data', 'image/*'])]
+public function upload(#[FromFile] UploadedFileInterface $avatar): array { /* ... */ }
+```
+
+A `Content-Length` above the limit is answered 413 before anything is read; a body without one
+(chunked) is wrapped so that reading past the limit throws 413 instead of filling the worker's
+memory. A body whose media type matches none of the patterns (exact, `type/*` or
+`type/*+suffix`) gets 415. Requests without a body pass untouched. The global middleware reads
+the route's `#[BodyLimit]` with a cheap match before routing, so a route can raise the limit
+above the global one; a `null` argument keeps the global value. The attribute works without the
+global middleware too, and the OpenAPI document lists 413 and 415 for the route. The server's
+own limits apply first: `post_max_size` under php-fpm, `http.max_request_size` in RoadRunner,
+`request_body` in Caddy.
+
+### Idempotency keys
+
+```php
+// config/idempotency.php; needs a PSR-16 cache (CacheProvider)
+return new IdempotencyConfig(ttl: 86_400);
+
+#[Post('/payments')]
+#[Idempotent(required: true)]
+public function pay(#[FromBody] Payment $payment): array { /* ... */ }
+```
+
+The client sends `Idempotency-Key: <uuid>` with an unsafe request (draft-ietf-httpapi-idempotency-key-header).
+The first request runs and its response (any status below 500 except 429) is stored for `ttl`
+seconds. A retry with the same key and the same method, path, query and body gets that response,
+marked `Idempotent-Replayed: true`, without running the handler; the same key with a different
+request gets 422; a retry while the first is still running gets 409 with `Retry-After`. A request
+that failed (5xx or an exception) releases its key, so the retry runs. Keys are 1-255 visible
+ASCII characters (a quoted structured-field string is accepted) and are scoped to the principal,
+or else to the `Authorization` header: place the middleware after `AuthMiddleware`.
+
+The lock is an atomic `CounterStorage` increment: APCu, Redis (`RedisConfig(use: ['counters'])`)
+or, without either, process memory, which only protects one worker. As global middleware it
+covers POST and PATCH (`IdempotencyConfig::$methods`) that carry a key, merged with the route's
+`#[Idempotent]`; the attribute alone applies to the route whatever its method and documents the
+header, 409 and 422 in OpenAPI. Streamed responses are not stored.
+
+### Server-Timing
+
+```php
+// config/server_timing.php
+return new ServerTimingConfig(responseTimeHeader: 'X-Response-Time');
+
+#[Get('/users/{id}')]
+public function show(int $id, ServerTiming $timing): UserView
+{
+    $user = $timing->measure('db', fn() => $this->users->find($id), 'User lookup');
+    $timing->add('cache', 0.4);
+
+    return UserView::from($user);
+}
+```
+
+`ServerTimingMiddleware` measures everything below it and answers
+`Server-Timing: db;dur=3.2;desc="User lookup", cache;dur=0.4, total;dur=7.9`, which browsers show in
+the network panel. `ServerTiming` is a fresh collector per request, stored as a request attribute
+and injected by type (`ServerTiming::of($request)` in a middleware); `start()`/`stop()`,
+`measure()` and `add()` record milliseconds. `timingAllowOrigin` lets pages of other origins read
+the numbers, `metrics: false` sends the total alone. Timings tell anyone how long your backends
+take: think twice before exposing them on a public API.
+
+### Deprecating routes
+
+```php
+#[Get('/v1/users')]
+#[Deprecated(since: '2026-07-01', sunset: '2027-01-01', link: 'https://docs.example.com/v2', successor: 'https://api.example.com/v2/users')]
+public function list(): array { /* ... */ }
+```
+
+Responses of the route carry `Deprecation: @1782864000` (RFC 9745), `Sunset: Fri, 01 Jan 2027
+00:00:00 GMT` (RFC 8594), `Link: <...>; rel="deprecation"` and `Link: <...>; rel="successor-version"`;
+without `since` the route is announced as deprecated already (`@0`). The OpenAPI operation gets
+`deprecated: true` and `x-sunset`, and `keel:routes` marks the handler. Dates are read as UTC; a
+sunset earlier than `since` or a URL that cannot sit in a `Link` header fails when routes are
+compiled. Errors thrown by the handler are answered without the headers. Not to be confused with
+PHP's own `#[\Deprecated]`, which makes calling the method emit `E_USER_DEPRECATED`.
+
 ## Miscellaneous
 
 - `MethodOverrideMiddleware` is opt-in; it overrides the method only for `POST` and only to
   `PUT`/`PATCH`/`DELETE` based on the `X-HTTP-Method-Override` header.
 - `SapiEmitter` sends a response through the SAPI (php-fpm, built-in server); the front
-  controller example is `examples/hello/public/index.php`.
+  controller example is `examples/hello/public/index.php`. A non-seekable body is streamed,
+  see above. `SapiEmitter::finish()` ends the response for the client while the script goes on
+  (`fastcgi_finish_request()`, `frankenphp_finish_request()`); `FpmRuntime` calls it before
+  `Kernel::terminate()`.

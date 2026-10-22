@@ -11,7 +11,9 @@ use Nyholm\Psr7Server\ServerRequestCreatorInterface;
 
 /**
  * Classic one-process-per-request model: php-fpm, mod_php, the built-in server and
- * FrankenPHP without worker mode.
+ * FrankenPHP without worker mode. With the default emitter the request is finished for the
+ * client (fastcgi_finish_request() and friends) before Kernel::terminate(), so ResponseSent
+ * listeners and deferred tasks do not delay the response.
  */
 final class FpmRuntime implements RuntimeInterface
 {
@@ -24,10 +26,18 @@ final class FpmRuntime implements RuntimeInterface
 
         // terminate() runs even when request creation or emitting throws: Resettable services
         // must not keep this request's state, and the exception still reaches the SAPI.
+        $request = null;
+        $sent = null;
         try {
-            $emitter->emit($kernel->handle($creator->fromGlobals()));
+            $request = $creator->fromGlobals();
+            $response = $kernel->handle($request);
+            $emitter->emit($response);
+            $sent = $response;
+            if ($this->emitter === null) {
+                SapiEmitter::finish();
+            }
         } finally {
-            $kernel->terminate();
+            $kernel->terminate($request, $sent);
         }
 
         return 0;

@@ -33,9 +33,6 @@ final readonly class Route
     ) {}
 
     /**
-     * The value of a RouteOption attribute, or null when the route has none with that key.
-     */
-    /**
      * The path with every placeholder stripped of its constraint: "/users/{id:\d+}" becomes
      * "/users/{id}", the form OpenAPI and tracing name a route by.
      */
@@ -58,6 +55,9 @@ final readonly class Route
         );
     }
 
+    /**
+     * The value of a RouteOption attribute, or null when the route has none with that key.
+     */
     public function option(string $key): mixed
     {
         return $this->options[$key] ?? null;

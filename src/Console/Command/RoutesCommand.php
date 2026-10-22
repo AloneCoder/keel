@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Keel\Console\Command;
 
+use Keel\Http\Attribute\Deprecated;
 use Keel\Routing\Attribute\Redirect;
 use Keel\Routing\Redirector;
 use Keel\Routing\Route;
@@ -67,7 +68,7 @@ final class RoutesCommand extends Command
             return sprintf('redirect %s -> %s', is_int($redirect['status'] ?? null) ? (string) $redirect['status'] : '', $redirect['to']);
         }
 
-        return $route->handler[0] . '::' . $route->handler[1];
+        return $route->handler[0] . '::' . $route->handler[1] . ($route->option(Deprecated::KEY) !== null ? ' (deprecated)' : '');
     }
 
     private static function auth(mixed $option, mixed $can): string

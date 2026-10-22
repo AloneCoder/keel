@@ -118,6 +118,10 @@ Listeners on a parent class or an interface receive subclasses too. Order: prior
 descending, then registration order. `StoppableEventInterface` stops the chain. The listener
 object is created by the container on the first event, so it can have dependencies.
 
+The kernel and the runtimes dispatch their own events on the same bus: `RequestReceived`,
+`ExceptionRaised`, `ResponseSent`, `WorkerStarted` and `WorkerStopping`, see
+[Runtimes](runtime.md#lifecycle-events).
+
 ## Logging
 
 Unless the application registers a `Psr\Log\LoggerInterface`, `App::boot()` wires
@@ -186,6 +190,22 @@ return static fn(string $projectDir): LoggerConfig => new LoggerConfig(
   (`$FRANKENPHP_BINARY` or `frankenphp` in `PATH`), `--worker` its worker mode, `--watch` restarts
   the workers when `src/`, `config/` or `.env` change. Worker mode in development is the fastest
   way to catch state leaking between requests;
+- `keel:install [component...] [--dry-run] [--no-composer] [--force]`: adds a framework
+  component in one step: `composer require` for its packages (those not installed yet), its
+  provider appended to `ServicesConfig` in `config/services.php` and its middleware to
+  `HttpConfig` in `config/http.php` (edited in place, comments and layout kept; created when
+  missing), and a starter config file for what it needs (`config/redis.php`, `config/jwt.php`,
+  ...), never overwriting one that exists without `--force`. Without arguments it lists the
+  components: `cache`, `redis`, `memcached`, `dbal`, `pdo`, `twig`, `latte`, `monolog`,
+  `storage`, `flysystem`, `i18n`, `http-client`, `jwt`, `security-headers`, `cors`, `health`,
+  `metrics`, `openapi`, `opentelemetry`, `roadrunner`, `console`. A component may pull others in
+  (`jwt` brings `http-client` and `cache`); a list it cannot find in a config file is reported
+  and has to be edited by hand (exit code 1);
+- `keel:ai:init [--force] [--agents=AGENTS.md] [--llms=public/llms.txt] [--stdout]`: writes an
+  `AGENTS.md` for coding agents, built from the application (stack, commands, layout, the worker
+  mode rules, global middleware, providers, config objects, routes and pointers to the Keel docs
+  installed in `vendor/`), and an `llms.txt` (llmstxt.org) describing the HTTP API from its
+  OpenAPI document, served from `public/`. `--llms=none` or `--agents=none` skips one;
 - every discovered `#[AsCommand]`, created lazily through the container (autowired constructor).
 
 `symfony/console` is an optional dependency (`composer require symfony/console`).

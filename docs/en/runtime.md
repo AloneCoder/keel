@@ -42,9 +42,12 @@ request 12.8 ms versus 2.7 ms.
 In worker modes the same `Kernel`, container and router serve thousands of requests. The rules
 the kernel follows and the application must follow too:
 
-- `Kernel::terminate()` calls `Container::reset()` after every request: every instantiated
-  shared service implementing `Resettable` drops its request state. This runs in `finally`,
-  even when sending the response failed.
+- `Kernel::terminate($request, $response)` runs after every request, once the response went
+  out: it dispatches `ResponseSent`, runs the deferred tasks, then calls `Container::reset()`,
+  so every instantiated shared service implementing `Resettable` drops its request state. The
+  reset runs in `finally`, even when sending the response failed. Under php-fpm the request is
+  finished for the client first (`fastcgi_finish_request()`); FrankenPHP calls it after the
+  request handler returned, RoadRunner after the response went back to the server.
 - Nothing request-specific lives in statics, globals or properties of services that are not
   `Resettable`. The request is passed explicitly.
 - An exception while creating the request or emitting the response is logged as `critical`
@@ -60,6 +63,90 @@ the kernel follows and the application must follow too:
 
 The `examples/hello` route `/stats` shows `request_hits` (always 1, the service is `Resettable`)
 and `worker_hits` (grows in worker mode, 1 under php-fpm).
+
+## Lifecycle events
+
+The kernel and the runtimes dispatch PSR-14 events on the application's dispatcher (see
+[Events](app.md#events-psr-14)); an event is only built when a listener applies to it, so the
+ones nobody listens to cost an array lookup per request.
+
+| Event (`Keel\Kernel\Event`) | When | Carries |
+|---|---|---|
+| `RequestReceived` | a request enters the pipeline, before the global middleware | `request` |
+| `ExceptionRaised` | a throwable escapes the pipeline, before it is rendered | `exception`, `request`, `status` |
+| `ResponseSent` | in `Kernel::terminate()`, after the response went out | `request`, `response` |
+| `WorkerStarted` | a FrankenPHP or RoadRunner worker, before its first request | `runtime` |
+| `WorkerStopping` | the worker loop ended | `runtime`, `requests`, `reason`: `server`, `max_requests` or `memory` |
+
+```php
+final class ErrorReporter
+{
+    public function __construct(private readonly Tracker $tracker) {}
+
+    #[Listener]
+    public function report(ExceptionRaised $event): void
+    {
+        if ($event->status >= 500) {
+            $this->tracker->capture($event->exception, ['path' => $event->request->getUri()->getPath()]);
+        }
+    }
+}
+```
+
+A `RequestReceived` listener that throws is answered like a failing handler; a failure in an
+`ExceptionRaised` or `ResponseSent` listener is logged and changes nothing for the client.
+`WorkerStarted` and `WorkerStopping` are not dispatched under php-fpm, where every request is a
+fresh process; an exception in a `WorkerStarted` listener stops the worker before it serves.
+
+## Work after the response
+
+```php
+#[Post('/signup')]
+#[Status(201)]
+public function signUp(#[FromBody] SignUp $form, DeferredTasks $deferred): array
+{
+    $user = $this->users->create($form);
+    $deferred->defer(fn() => $this->mailer->sendWelcome($user));
+    $deferred->defer(fn() => $this->crm->push($user));
+
+    return ['id' => $user->id];
+}
+```
+
+`DeferredTasks::defer()` queues a closure that `Kernel::terminate()` runs once the client has the
+response: a mail, a webhook, a cache warm-up, an audit record, without a queue. Tasks run in
+order; one that throws is logged and the next still runs; a task may defer more. They are not
+durable (a crash or a deploy loses them) and, in worker mode, the worker takes no request until
+they finish, so keep them short and use a real queue for work that must not be lost.
+`TestClient` runs them before it returns the response, like a worker does.
+
+## Load shedding
+
+```php
+// config/load_shedding.php
+return new LoadSheddingConfig(
+    maxInFlight: 14,          // of 16 workers: the rest answer 503 fast instead of queueing
+    maxQueueTime: 2_000,      // ms the request waited in front of PHP (X-Request-Start)
+    maxLoadAverage: 12.0,
+    minAvailableMemory: '256M',
+);
+```
+
+`LoadSheddingMiddleware` answers 503 with `Retry-After` before any work while the server is
+overloaded. A quick 503 for some requests keeps the others answerable, where doing all the work
+would time them all out. Every signal is off until given a threshold:
+
+| Signal | Reads | Notes |
+|---|---|---|
+| `maxInFlight` | requests being handled right now by the workers that share APCu | a php-fpm pool or a FrankenPHP server; RoadRunner workers have their own APCu each (bound concurrency with the pool size there). The counter restarts every 60 seconds, so a worker killed mid-request cannot leave it stuck; without APCu only this process is counted |
+| `maxQueueTime` | `X-Request-Start` or `X-Queue-Start` from the proxy: `t=<seconds>`, milliseconds or microseconds | nginx: `proxy_set_header X-Request-Start "t=${msec}";` (Heroku sets it). A client can only make its own request look old |
+| `maxLoadAverage` | the one-minute load average of the host | |
+| `minAvailableMemory` | the cgroup v2 limit minus its working set inside a container, `MemAvailable` otherwise | Linux; skipped where neither can be read; read at most once a second |
+
+Paths under `except` (`/health` and `/metrics` by default) are never shed; place the middleware
+after `HealthMiddleware` and `MetricsMiddleware` as well. Each shed request is logged at info
+level with the reason. It is the sibling of the `MemoryGuard`: the guard recycles a worker that
+grew too large, the shedding protects the server as a whole.
 
 ## Verified live
 

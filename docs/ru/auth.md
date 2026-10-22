@@ -31,6 +31,7 @@ public function feed(?Principal $user = null): array { /* персонализа
 | `BearerTokenAuthenticator` | `Authorization: Bearer <token>` | `PrincipalResolver` |
 | `ApiKeyAuthenticator` | `X-Api-Key: <key>` (заголовок настраивается) | `PrincipalResolver` |
 | `HmacAuthenticator` | `Authorization: HMAC <keyId>:<timestamp>:<signature>` | `HmacSecrets` |
+| `Jwt\JwtAuthenticator` | `Authorization: Bearer <JWT>` | `JwtConfig`: секрет, публичные ключи или JWKS URL |
 
 `PrincipalResolver::resolve(string $credential): ?Principal` и
 `HmacSecrets::secretFor(string $keyId): ?string` реализуете вы (база, кэш, статическая карта);
@@ -81,6 +82,52 @@ return new AuthConfig([BearerTokenAuthenticator::class, HmacAuthenticator::class
 одинакового объёма работы, так что перебрать key id нельзя. Host и `Content-Type` в
 подписываемую строку не входят: подпись действительна на любом хосте с тем же секретом, поэтому
 никогда не используйте один HMAC-секрет в разных окружениях.
+
+### JWT
+
+`JwtAuthenticator` проверяет JSON Web Token без сторонних библиотек: HS256/384/512,
+RS256/384/512, ES256/384/512 и EdDSA (Ed25519); RSA-PSS не поддерживается.
+
+```php
+// config/jwt.php: токены провайдера (Auth0, Keycloak, Cognito, Entra ID, ...)
+return static fn(Env $env): JwtConfig => new JwtConfig(
+    algorithms: ['RS256'],
+    jwksUrl: 'https://login.example.com/.well-known/jwks.json',
+    issuer: 'https://login.example.com/',
+    audience: 'orders-api',
+    rolesClaim: 'realm_access.roles',
+);
+
+// токены, которые вы выпускаете сами
+return static fn(Env $env): JwtConfig => new JwtConfig(algorithms: ['HS256'], secret: $env->require('JWT_SECRET'), issuer: 'orders-api');
+$token = Jwt::encode(['sub' => $user->id, 'roles' => $user->roles, 'exp' => time() + 900, 'iss' => 'orders-api'], $secret);
+
+// config/auth.php
+return new AuthConfig([JwtAuthenticator::class]);
+```
+
+Токен принимается, если его `alg` есть в `algorithms`, подпись сходится с ключом подходящего
+типа (при `kid` — только с этим ключом; RSA-ключ никогда не проверяет HS256, что закрывает атаку
+подмены алгоритма; `none` не принимается никогда), заголовка `crit` нет, `exp` в будущем, а
+`nbf`/`iat` не слишком далеко впереди (с допуском `leeway`, по умолчанию 60 секунд), и `iss`,
+`aud` и `requiredClaims` совпадают с конфигом. Токены без `exp` отклоняются, если не задано
+`requireExpiration: false`. HMAC-секрет — не короче 32 байт, RSA-ключ — от 2048 бит.
+
+Principal — `Identity`: id из `subjectClaim` (`sub`), роли из `rolesClaim` (путь через точку;
+список или строка через пробел) — их проверяет `#[Auth('admin')]`, и все claims как атрибуты,
+плюс `scopes` списком из `scope` или `scp`: `$user->get('scopes')`, `$user->get('tenant')`.
+Плохой токен получает 401 с `WWW-Authenticate: Bearer realm="api", error="invalid_token"`;
+причина (истёк, не та аудитория, неизвестный key id) пишется в лог на уровне info, клиенту не
+сообщается.
+
+С `jwksUrl` ключи загружаются через PSR-18 клиент (подключите `HttpClientProvider`), хранятся в
+воркере `jwksTtl` секунд (3600) и, если зарегистрирован PSR-16 кэш, делятся с остальными
+воркерами. Токен с неизвестным `kid` вызывает повторную загрузку не чаще раза в минуту: ротация
+ключей подхватывается, а поддельные key id не заваливают провайдера запросами. Если повторная
+загрузка упала, используются уже известные ключи; без них запрос падает с 500, а не 401.
+`publicKeys` (PEM по `kid`) и `secret` можно сочетать с `jwksUrl`.
+`$authenticator->verifier()->verify($token)` проверяет токен вне запроса и возвращает claims.
+`keel:install jwt` пишет `config/jwt.php` и `config/auth.php`.
 
 ## Требование аутентификации
 

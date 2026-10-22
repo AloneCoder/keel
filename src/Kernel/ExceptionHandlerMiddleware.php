@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Keel\Kernel;
 
 use Keel\Http\Responder;
+use Keel\Kernel\Event\ExceptionRaised;
+use Keel\Kernel\Event\RequestReceived;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -16,21 +18,29 @@ use Psr\Log\LoggerInterface;
  * Outermost middleware: converts every throwable into a Problem Details response, as JSON
  * (application/problem+json) or as an HTML page when the client prefers text/html.
  * Server errors (5xx) are logged; in debug mode the payload carries the exception.
+ * With a container it also dispatches the RequestReceived and ExceptionRaised lifecycle events.
  */
 final class ExceptionHandlerMiddleware implements MiddlewareInterface
 {
     /** @var LoggerInterface|false|null null = not looked up yet, false = container has no logger */
     private LoggerInterface|false|null $logger = null;
 
+    private readonly ?Lifecycle $lifecycle;
+
     public function __construct(
         private readonly Responder $responder,
         private readonly bool $debug = false,
         private readonly ?ContainerInterface $container = null,
-    ) {}
+        ?Lifecycle $lifecycle = null,
+    ) {
+        $this->lifecycle = $lifecycle ?? ($container === null ? null : new Lifecycle($container));
+    }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         try {
+            $this->lifecycle?->dispatch(new RequestReceived($request));
+
             return $handler->handle($request);
         } catch (\Throwable $exception) {
             return $this->render($exception, $request);
@@ -60,6 +70,7 @@ final class ExceptionHandlerMiddleware implements MiddlewareInterface
     private function problem(\Throwable $exception, ServerRequestInterface $request): ResponseInterface
     {
         $problem = ProblemDetails::fromThrowable($exception, $this->debug);
+        $this->lifecycle?->notify(new ExceptionRaised($exception, $request, $problem->status));
 
         if ($problem->status >= 500) {
             $this->logger()?->error($exception->getMessage(), [

@@ -117,6 +117,9 @@ $this->events->dispatch(new Greeted($name));   // EventDispatcherInterface из 
 затем порядок регистрации. `StoppableEventInterface` останавливает цепочку. Объект-слушатель
 создаётся контейнером при первом событии, поэтому у него могут быть зависимости.
 
+Ядро и рантаймы рассылают через ту же шину свои события: `RequestReceived`, `ExceptionRaised`,
+`ResponseSent`, `WorkerStarted` и `WorkerStopping`, см. [Рантаймы](runtime.md#события-жизненного-цикла).
+
 ## Логирование
 
 Если приложение не зарегистрировало `Psr\Log\LoggerInterface`, `App::boot()` подключает
@@ -184,6 +187,23 @@ return static fn(string $projectDir): LoggerConfig => new LoggerConfig(
   (`$FRANKENPHP_BINARY` или `frankenphp` в `PATH`), `--worker` — его worker mode, `--watch`
   перезапускает воркеры при изменении `src/`, `config/` или `.env`. Worker mode в разработке —
   самый быстрый способ поймать состояние, утекающее между запросами;
+- `keel:install [component...] [--dry-run] [--no-composer] [--force]`: подключает компонент
+  фреймворка одним шагом: `composer require` для его пакетов (тех, что ещё не стоят), его
+  провайдер дописывается в `ServicesConfig` в `config/services.php`, middleware — в `HttpConfig`
+  в `config/http.php` (правка на месте, комментарии и разметка сохраняются; файл создаётся, если
+  его нет), и стартовый конфиг для того, что ему нужно (`config/redis.php`, `config/jwt.php`,
+  ...), без перезаписи существующего без `--force`. Без аргументов выводит список компонентов:
+  `cache`, `redis`, `memcached`, `dbal`, `pdo`, `twig`, `latte`, `monolog`, `storage`,
+  `flysystem`, `i18n`, `http-client`, `jwt`, `security-headers`, `cors`, `health`, `metrics`,
+  `openapi`, `opentelemetry`, `roadrunner`, `console`. Компонент может тянуть другие (`jwt`
+  приносит `http-client` и `cache`); список, который не удалось найти в конфиге, команда
+  называет, и его нужно поправить руками (код выхода 1);
+- `keel:ai:init [--force] [--agents=AGENTS.md] [--llms=public/llms.txt] [--stdout]`: пишет
+  `AGENTS.md` для кодовых агентов, собранный из самого приложения (стек, команды, структура,
+  правила worker-режима, глобальные middleware, провайдеры, объекты конфига, маршруты и ссылки на
+  документацию Keel, установленную в `vendor/`), и `llms.txt` (llmstxt.org) с описанием HTTP API
+  по его документу OpenAPI, который отдаётся из `public/`. `--llms=none` или `--agents=none`
+  пропускает один из них;
 - все найденные `#[AsCommand]`, создаются лениво через контейнер (конструктор автовайрится).
 
 `symfony/console` — опциональная зависимость (`composer require symfony/console`).

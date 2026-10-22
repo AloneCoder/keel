@@ -31,6 +31,7 @@ Built in:
 | `BearerTokenAuthenticator` | `Authorization: Bearer <token>` | a `PrincipalResolver` |
 | `ApiKeyAuthenticator` | `X-Api-Key: <key>` (header configurable) | a `PrincipalResolver` |
 | `HmacAuthenticator` | `Authorization: HMAC <keyId>:<timestamp>:<signature>` | `HmacSecrets` |
+| `Jwt\JwtAuthenticator` | `Authorization: Bearer <JWT>` | `JwtConfig`: a secret, public keys or a JWKS URL |
 
 `PrincipalResolver::resolve(string $credential): ?Principal` and
 `HmacSecrets::secretFor(string $keyId): ?string` are yours to implement (database, cache, a
@@ -81,6 +82,52 @@ A wrong signature and an unknown key id get the same answer, "Invalid signature"
 amount of work, so key ids cannot be enumerated. Host and `Content-Type` are not part of the
 signed string: a signature is valid on every host that shares the secret, so never share HMAC
 secrets between environments.
+
+### JWT
+
+`JwtAuthenticator` verifies JSON Web Tokens without a third-party library: HS256/384/512,
+RS256/384/512, ES256/384/512 and EdDSA (Ed25519); RSA-PSS is not supported.
+
+```php
+// config/jwt.php: tokens of an identity provider (Auth0, Keycloak, Cognito, Entra ID, ...)
+return static fn(Env $env): JwtConfig => new JwtConfig(
+    algorithms: ['RS256'],
+    jwksUrl: 'https://login.example.com/.well-known/jwks.json',
+    issuer: 'https://login.example.com/',
+    audience: 'orders-api',
+    rolesClaim: 'realm_access.roles',
+);
+
+// tokens you issue yourself
+return static fn(Env $env): JwtConfig => new JwtConfig(algorithms: ['HS256'], secret: $env->require('JWT_SECRET'), issuer: 'orders-api');
+$token = Jwt::encode(['sub' => $user->id, 'roles' => $user->roles, 'exp' => time() + 900, 'iss' => 'orders-api'], $secret);
+
+// config/auth.php
+return new AuthConfig([JwtAuthenticator::class]);
+```
+
+A token is accepted when its `alg` is one of `algorithms`, a key of the matching type verifies
+the signature (with a `kid` only that key; an RSA key never verifies HS256, which defeats the
+algorithm-confusion attack; `none` is never accepted), it has no `crit` header, `exp` is in the
+future and `nbf`/`iat` not too far ahead (with `leeway`, 60 seconds by default), and `iss`,
+`aud` and `requiredClaims` match the config. Tokens without `exp` are refused unless
+`requireExpiration: false`. HMAC secrets must be at least 32 bytes, RSA keys 2048 bits.
+
+The principal is an `Identity`: the id from `subjectClaim` (`sub`), the roles from `rolesClaim`
+(a dotted path; a list or a space-separated string), what `#[Auth('admin')]` checks, and every
+claim as an attribute, plus `scopes` as a list from `scope` or `scp`:
+`$user->get('scopes')`, `$user->get('tenant')`. A bad token is answered 401 with
+`WWW-Authenticate: Bearer realm="api", error="invalid_token"`; the reason (expired, wrong
+audience, unknown key id) is logged at info level, never told to the client.
+
+With `jwksUrl` the keys are fetched through the PSR-18 client (load `HttpClientProvider`), kept
+in the worker for `jwksTtl` seconds (3600) and shared with the other workers through the PSR-16
+cache when one is registered. A token with an unknown `kid` triggers a refetch, at most once a
+minute, so a rotation is picked up without letting forged key ids hammer the provider. When a
+refetch fails the known keys stay in use; without any, the request fails with a 500, not a 401.
+`publicKeys` (PEM, keyed by `kid`) and `secret` can be combined with `jwksUrl`.
+`$authenticator->verifier()->verify($token)` checks a token outside a request and returns its
+claims. `keel:install jwt` writes `config/jwt.php` and `config/auth.php`.
 
 ## Requiring authentication
 

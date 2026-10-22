@@ -90,6 +90,45 @@ return new CacheConfig(driver: 'redis', prefix: 'myapp:');
 `RedisProvider::connect()` создаёт соединение; зарегистрируйте `RedisConfig` до загрузки
 провайдера (конфиги регистрируются первыми, так что `config/redis.php` достаточно).
 
+## Кэш вывода
+
+`#[OutputCache]` отдаёт ответ маршрута целиком из кэша: хэндлер выполняется один раз, следующие
+GET и HEAD получают сохранённую копию, пока она не истечёт или пока не сбросят один из её тегов.
+Нужен PSR-16 `CacheInterface` (`CacheProvider`).
+
+```php
+#[Get('/products/{id}')]
+#[OutputCache(ttl: 300, tags: ['products', 'product:{id}'], varyByQuery: ['lang'], varyByHeaders: ['Accept-Language'])]
+public function show(int $id): ProductView { /* ... */ }
+
+#[Patch('/products/{id}')]
+public function update(int $id, #[FromBody] ProductPatch $patch, OutputCacheStore $pages): ProductView
+{
+    $product = $this->products->update($id, $patch);
+    $pages->invalidateTags('products', "product:$id");
+
+    return ProductView::from($product);
+}
+```
+
+Ключ — метод, хост и путь, плюс query (`varyByQuery: true` по умолчанию; `false` его игнорирует;
+список оставляет только эти параметры), перечисленные заголовки запроса и, с
+`varyByPrincipal: true`, principal. Теги могут ссылаться на плейсхолдеры маршрута
+(`product:{id}`). `invalidateTags()` выдаёт каждому тегу новую версию; сохранённый ответ помнит
+версии, с которыми он записан, и устаревает, как только одна из них сменилась, — это работает на
+любом PSR-16 хранилище без перебора ключей. Версии тегов хранятся без срока, а вытесненная версия
+читается как неизвестная, так что её ответы становятся устаревшими, а не снова свежими.
+
+Ответы получают `X-Cache: HIT` или `MISS` (`OutputCacheConfig::$header`, null — без заголовка) и
+при попадании — `Age`. Сохраняются только ответы 200; никогда — те, что ставят cookie, говорят
+`Cache-Control: no-store` или `private`, стримят тело или больше
+`OutputCacheConfig::$maxBodyBytes` (1 МиБ). Запросы с заголовком `Authorization` идут мимо кэша,
+кроме случая, когда маршрут варьируется по principal и principal к этому моменту уже известен:
+объявляйте `#[Auth]` раньше `#[OutputCache]`. Без этого такие запросы идут мимо кэша, а не делят
+одну копию.
+В отличие от `#[CacheControl]`, который говорит клиентам и прокси, что хранить, этот кэш экономит
+работу на сервере.
+
 ## Worker mode
 
 `ArrayCache` — кэш на воркер: при четырёх воркерах запись вычислится до четырёх раз, а

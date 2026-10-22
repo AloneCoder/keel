@@ -44,6 +44,9 @@ Scalar с jsDelivr, закреплённый на версии; через `docs
 | возврат `Page` | конверт пагинации (`items`, `page`, `perPage`, `total`, `pages`) с типом элементов из `@return Page<Dto>` или `#[Response(type: Page::class, items: Dto::class)]` |
 | `#[Auth]`, `#[Can]` | `security` со схемой каждого настроенного аутентификатора, плюс 401 (и 403 при ролях или способности) |
 | `#[RateLimit]` | ответ 429 |
+| `#[Deprecated]` | `deprecated: true` и `x-sunset` с датой отключения |
+| `#[Idempotent]` | параметр заголовка `Idempotency-Key` (обязательный при `required: true`), ответы 409 и 422 |
+| `#[BodyLimit]` | 413, если задан размер, 415, если перечислены media types |
 | есть тело или параметры | ответ 400 со схемой `Problem` |
 
 Идентификаторы операций берутся из имени маршрута, иначе `<Контроллер><Метод>` (`userShow`);

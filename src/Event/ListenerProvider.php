@@ -20,6 +20,9 @@ final class ListenerProvider implements ListenerProviderInterface
 
     private int $sequence = 0;
 
+    /** @var array<string, bool> event class => whether any listener applies; cleared by add() */
+    private array $listened = [];
+
     /**
      * @param array<mixed> $listeners tuples [class, method, event, priority], usually compiled from discovery
      */
@@ -45,6 +48,7 @@ final class ListenerProvider implements ListenerProviderInterface
     public function add(string $event, \Closure|array $listener, int $priority = 0): self
     {
         $this->listeners[$event][] = [$priority, $this->sequence++, $listener];
+        $this->listened = [];
 
         return $this;
     }
@@ -89,6 +93,28 @@ final class ListenerProvider implements ListenerProviderInterface
         }
 
         return $found;
+    }
+
+    /**
+     * Whether any listener would receive an event of this class (registered for it, a parent
+     * class or an interface), without instantiating listener owners. Lets the kernel skip
+     * building lifecycle events nobody listens to.
+     *
+     * @param class-string $event
+     */
+    public function hasListenersFor(string $event): bool
+    {
+        if (!isset($this->listened[$event])) {
+            $this->listened[$event] = false;
+            foreach (array_keys($this->listeners) as $type) {
+                if (is_a($event, $type, true)) {
+                    $this->listened[$event] = true;
+                    break;
+                }
+            }
+        }
+
+        return $this->listened[$event];
     }
 
     /**

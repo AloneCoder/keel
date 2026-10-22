@@ -18,14 +18,15 @@ $kernel = Kernel::build(
     debug: $env === 'dev',
 );
 $response = $kernel->handle($request);    // ServerRequestInterface → ResponseInterface
-$kernel->terminate();                     // после отправки ответа: Container::reset()
+$kernel->terminate($request, $response);  // после отправки: ResponseSent, отложенные задачи, Container::reset()
 ```
 
 `Kernel::build()` регистрирует в контейнере `Psr17Factory` под всеми PSR-17 интерфейсами,
 `Responder`, `ArgumentResolver` и `Router`, если приложение не сделало этого само. Для
 скомпилированного контейнера и кэша маршрутов используйте конструктор
 `new Kernel($container, $router, $middleware, $debug)`; `Kernel::registerDefaults()` нужно
-вызвать перед компиляцией.
+вызвать перед компиляцией. `terminate()` рассылает `ResponseSent`, выполняет `DeferredTasks` и
+сбрасывает сервисы; см. [Рантаймы](runtime.md#события-жизненного-цикла).
 
 `Pipeline` — PSR-15 обработчик: middleware выполняются в порядке объявления (FIFO), классы
 резолвятся из контейнера на каждом запросе, так что временем их жизни управляет контейнер:
@@ -136,7 +137,53 @@ public function list(#[FromQuery] PageRequest $page): Page
 | `null` | 204 без тела |
 | `string` | `text/html; charset=utf-8` |
 | `Keel\Http\Redirect` | 3xx с `Location`: `Redirect::to('/login')`, `Redirect::route('users.show', ['id' => 5], 303)`, см. [Роутинг](routing.md#редиректы) |
+| `Keel\Http\EventStream` | `text/event-stream`, формируется по ходу отправки, см. [Стриминг](#стриминг-и-server-sent-events) |
 | массив, `JsonSerializable`, объект | `application/json`, флаги `JSON_UNESCAPED_UNICODE`, `JSON_UNESCAPED_SLASHES`, `JSON_PRESERVE_ZERO_FRACTION` |
+
+## Стриминг и Server-Sent Events
+
+```php
+#[Get('/orders/{id}/progress')]
+public function progress(int $id): EventStream
+{
+    return new EventStream(function () use ($id) {
+        foreach ($this->tracker->follow($id) as $step) {
+            yield new SseEvent($step, event: 'progress', id: (string) $step->sequence);
+        }
+        yield new SseEvent('done', event: 'end');
+    });
+}
+
+#[Get('/orders/export')]
+public function export(Responder $responder): ResponseInterface
+{
+    return $responder->stream(function () {
+        foreach ($this->orders->cursor() as $order) {
+            yield json_encode($order) . "\n";
+        }
+    }, 'application/x-ndjson');
+}
+```
+
+Тело ответа — `IteratorStream`: ничего не выполняется, пока эмиттер его не читает, и каждый
+кусок уходит клиенту сразу, как только генератор его выдал. Элементы `EventStream` — объекты
+`SseEvent` (`data`, `event`, `id`, `retry`, `comment`), строки (уходят как `data`) или любое
+значение, которое кодируется в JSON; `SseEvent::comment('ping')` — обычный heartbeat, чтобы
+прокси не закрывали простаивающее соединение. Поток событий отдаётся с `Cache-Control: no-cache`
+и `X-Accel-Buffering: no`, чтобы nginx пропускал события, а не буферизовал их.
+
+- `SapiEmitter` сбрасывает буферы вывода PHP после каждого куска, а когда `connection_aborted()`
+  сообщает, что клиента нет, останавливается и закрывает тело — генератор завершается (его
+  `finally` выполняется). Держите `zlib.output_compression` выключенным и проверьте, что прокси
+  не буферизует.
+- `RoadRunnerRuntime` отправляет неперематываемое тело как поток RoadRunner, по кадру на кусок
+  (RoadRunner 2023.3 или новее); любое другое тело по-прежнему уходит одним кадром.
+- Строка статуса и заголовки отправлены до запуска генератора: брошенное им исключение рантайм
+  логирует как critical, а ответ обрывается. Ловите что можно внутри.
+- Открытый поток занимает воркер (дочерний процесс php-fpm, поток FrankenPHP, воркер RoadRunner)
+  до своего конца. Рассчитывайте пул на ожидаемое число потоков и оставляйте запас для обычных
+  запросов через `LoadSheddingMiddleware` (`maxInFlight`, см. [Рантаймы](runtime.md#сброс-нагрузки)).
+- `HttpCacheMiddleware`, `#[OutputCache]` и ключи идемпотентности потоковые тела не трогают.
 
 ## Ошибки: RFC 9457 Problem Details
 
@@ -148,7 +195,8 @@ public function list(#[FromQuery] PageRequest $page): Page
 ```
 
 - `Keel\Http\Exception\HttpException` и наследники (`BadRequest`, `Unauthorized`,
-  `Forbidden`, `NotFound`, `MethodNotAllowed`, `Conflict`, `UnprocessableContent`) задают
+  `Forbidden`, `NotFound`, `MethodNotAllowed`, `Conflict`, `ContentTooLarge`,
+  `UnsupportedMediaType`, `UnprocessableContent`, `TooManyRequests`, `ServiceUnavailable`) задают
   статус, заголовки (например `Allow`, `WWW-Authenticate`) и безопасное для клиента
   сообщение в `detail`; `errors` добавляется, если есть.
 - Любое другое исключение — 500 с `title` «Internal Server Error», без `detail`; оно
@@ -201,17 +249,46 @@ final readonly class SignUp
 | `TrustedProxiesMiddleware` | `TrustedProxiesConfig` | применяет `X-Forwarded-For/Proto/Host/Port` только от доверенных CIDR; IP клиента в атрибуте `client_ip` |
 | `HttpCacheMiddleware` | `HttpCacheConfig` | `Cache-Control` и `ETag` для ответов 200 на GET/HEAD, 304 по `If-None-Match` / `If-Modified-Since`; см. ниже |
 | `CsrfMiddleware` | `CsrfConfig` | synchronizer-токен поверх сессии, см. [Сессии](session.md#защита-от-csrf) |
+| `SecurityHeadersMiddleware` | `SecurityHeadersConfig` | HSTS (только HTTPS), CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, COOP и CORP; см. ниже |
+| `TrustedHostsMiddleware` | `TrustedHostsConfig` | 400 для хоста вне белого списка; см. ниже |
+| `BodyLimitMiddleware` | `BodyLimitConfig` | 413 сверх лимита размера, 415 для неразрешённого media type; `#[BodyLimit]` на маршрут |
+| `ServerTimingMiddleware` | `ServerTimingConfig` | `Server-Timing` с общим временем и замерами хэндлеров, по желанию `X-Response-Time` |
+| `IdempotencyMiddleware` | `IdempotencyConfig` | сохранённый ответ на повтор с тем же `Idempotency-Key`; `#[Idempotent]` на маршрут |
+| `LoadSheddingMiddleware` | `LoadSheddingConfig` | 503 с `Retry-After` при перегрузке, см. [Рантаймы](runtime.md#сброс-нагрузки) |
+| `MethodOverrideMiddleware` | — | `POST` + `X-HTTP-Method-Override` → `PUT`/`PATCH`/`DELETE` |
+| `AuthMiddleware` | `AuthConfig` | аутентифицирует запросы с учётными данными, см. [Аутентификация](auth.md) |
+| `HealthMiddleware` | `HealthConfig` | `/health` и `/health/live`, см. [Здоровье и метрики](observability.md) |
+| `MetricsMiddleware` | `MetricsConfig` | метрики Prometheus и `/metrics` |
+| `OpenApiMiddleware` | `OpenApiConfig` | `/openapi.json` и `/docs`, см. [OpenAPI](openapi.md) |
+
+Атрибуты маршрута добавляют свои middleware: `#[Deprecated]` — `DeprecationMiddleware` (ниже),
+`#[OutputCache]` — `OutputCacheMiddleware` (см. [Кэш](cache.md#кэш-вывода)).
 
 `TrustedProxiesMiddleware` берёт самый правый адрес `X-Forwarded-For`, который сам не является
 доверенным прокси. Если доверены все (как при `proxies: ['*']`), берётся самый правый валидный
 адрес — его дописал ближайший к нам прокси; самый левый, который прислал клиент, не берётся
 никогда. Доверенный `X-Forwarded-Proto`, меняющий схему, заодно сбрасывает порт слушающего
 сокета, если `X-Forwarded-Port` или порт в `X-Forwarded-Host` не задают другой.
-| `MethodOverrideMiddleware` | — | `POST` + `X-HTTP-Method-Override` → `PUT`/`PATCH`/`DELETE` |
-| `AuthMiddleware` | `AuthConfig` | аутентифицирует запросы с учётными данными, см. [Аутентификация](auth.md) |
-| `HealthMiddleware` | `HealthConfig` | `/health` и `/health/live`, см. [Здоровье и метрики](observability.md) |
-| `MetricsMiddleware` | `MetricsConfig` | метрики Prometheus и `/metrics` |
-| `OpenApiMiddleware` | `OpenApiConfig` | `/openapi.json` и `/docs`, см. [OpenAPI](openapi.md) |
+
+Порядок в списке важен. Рабочий вариант для API за прокси:
+
+```php
+return new HttpConfig([
+    TrustedProxiesMiddleware::class,    // схема, хост и IP клиента такими, какими их видел клиент
+    HealthMiddleware::class,            // пробы: любой Host, никогда не сбрасываются
+    MetricsMiddleware::class,
+    LoadSheddingMiddleware::class,
+    TrustedHostsMiddleware::class,
+    ServerTimingMiddleware::class,      // меряет всё, что ниже
+    OpenApiMiddleware::class,           // до строгого CSP: его HTML-страница грузит скрипт
+    SecurityHeadersMiddleware::class,
+    CorsMiddleware::class,
+    BodyLimitMiddleware::class,
+    RequestIdMiddleware::class,
+    AuthMiddleware::class,
+    IdempotencyMiddleware::class,       // после аутентификации: ключи привязаны к principal
+]);
+```
 
 ### HTTP-кэширование
 
@@ -243,9 +320,134 @@ public function me(Principal $user): array { /* ... */ }
 поэтому для больших выгрузок и потоков отключайте `etag` (неперематываемое тело пропускается
 и так).
 
+### Заголовки безопасности
+
+```php
+// config/security_headers.php
+return SecurityHeadersConfig::api();   // только JSON: CSP "default-src 'none'; frame-ancestors 'none'"
+
+return new SecurityHeadersConfig(
+    contentSecurityPolicy: "default-src 'self'; img-src 'self' data:",
+    permissionsPolicy: ['camera' => [], 'geolocation' => ['self']],   // camera=(), geolocation=(self)
+);
+```
+
+По умолчанию: `Strict-Transport-Security: max-age=31536000; includeSubDomains` только на
+HTTPS-запросах (по обычному HTTP браузеры его игнорируют; за прокси, снимающим TLS, схему даёт
+`TrustedProxiesMiddleware`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin` и `Cross-Origin-Opener-Policy: same-origin`.
+CSP (можно в режиме report-only), `Permissions-Policy` и `Cross-Origin-Resource-Policy` выключены,
+пока не заданы; `hstsPreload` включайте только после подачи домена в preload-список. Заголовок,
+который в ответе уже есть, не трогается, так что отдельная страница (HTML-отчёт, справочник API)
+может отдать свою политику. `X-Powered-By` добавляет сам PHP: выставьте `expose_php = Off`.
+
+### Доверенные хосты
+
+```php
+// config/trusted_hosts.php
+return new TrustedHostsConfig(['api.example.com', '*.example.com']);
+```
+
+Запрос к любому другому хосту получает 400 ещё до роутинга, поэтому подделанный `Host` не
+попадает в генерируемые URL, редиректы и ссылки сброса пароля. `*.example.com` покрывает
+поддомены любой глубины, но не сам `example.com`; IP-литералы (`10.0.0.5`, `[::1]`) и `*`
+допустимы. Хост берётся из URI запроса — после того как `TrustedProxiesMiddleware` применил
+доверенный `X-Forwarded-Host`. Пробам, которые обращаются к поду по IP, нужен этот IP в списке
+или `HealthMiddleware` раньше в `HttpConfig`.
+
+### Лимиты тела запроса
+
+```php
+// config/body_limit.php: каждый запрос с телом
+return new BodyLimitConfig(maxBytes: '1M', contentTypes: ['application/json', 'application/*+json']);
+
+#[Post('/avatars')]
+#[BodyLimit('20M', contentTypes: ['multipart/form-data', 'image/*'])]
+public function upload(#[FromFile] UploadedFileInterface $avatar): array { /* ... */ }
+```
+
+`Content-Length` сверх лимита получает 413 до чтения тела; тело без него (chunked) оборачивается
+так, что чтение за лимит бросает 413, а не забивает память воркера. Тело, чей media type не
+подходит ни под один шаблон (точный, `type/*` или `type/*+suffix`), получает 415. Запросы без
+тела проходят как есть. Глобальный middleware ещё до роутинга дешёвым матчингом читает
+`#[BodyLimit]` маршрута, поэтому маршрут может поднять лимит выше глобального; аргумент `null`
+оставляет глобальное значение. Атрибут работает и без глобального middleware, а документ OpenAPI
+перечисляет для маршрута 413 и 415. Собственные лимиты сервера срабатывают раньше:
+`post_max_size` в php-fpm, `http.max_request_size` в RoadRunner, `request_body` в Caddy.
+
+### Ключи идемпотентности
+
+```php
+// config/idempotency.php; нужен PSR-16 кэш (CacheProvider)
+return new IdempotencyConfig(ttl: 86_400);
+
+#[Post('/payments')]
+#[Idempotent(required: true)]
+public function pay(#[FromBody] Payment $payment): array { /* ... */ }
+```
+
+Клиент отправляет небезопасный запрос с `Idempotency-Key: <uuid>`
+(draft-ietf-httpapi-idempotency-key-header). Первый запрос выполняется, и его ответ (любой статус
+ниже 500, кроме 429) сохраняется на `ttl` секунд. Повтор с тем же ключом и теми же методом,
+путём, query и телом получает этот ответ с пометкой `Idempotent-Replayed: true` без запуска
+хэндлера; тот же ключ с другим запросом получает 422; повтор, пока первый ещё выполняется, —
+409 с `Retry-After`. Запрос, который упал (5xx или исключение), освобождает ключ, и повтор
+выполняется заново. Ключ — 1-255 видимых ASCII-символов (строка structured field в кавычках тоже
+принимается); ключи привязаны к principal, а без него — к заголовку `Authorization`: ставьте
+middleware после `AuthMiddleware`.
+
+Блокировка — атомарный инкремент `CounterStorage`: APCu, Redis (`RedisConfig(use: ['counters'])`)
+или, без них, память процесса, которая защищает только один воркер. Глобальный middleware
+покрывает POST и PATCH (`IdempotencyConfig::$methods`) с ключом и учитывает `#[Idempotent]`
+маршрута; атрибут сам по себе действует на маршрут с любым методом и документирует в OpenAPI
+заголовок, 409 и 422. Потоковые ответы не сохраняются.
+
+### Server-Timing
+
+```php
+// config/server_timing.php
+return new ServerTimingConfig(responseTimeHeader: 'X-Response-Time');
+
+#[Get('/users/{id}')]
+public function show(int $id, ServerTiming $timing): UserView
+{
+    $user = $timing->measure('db', fn() => $this->users->find($id), 'User lookup');
+    $timing->add('cache', 0.4);
+
+    return UserView::from($user);
+}
+```
+
+`ServerTimingMiddleware` меряет всё, что ниже него, и отвечает
+`Server-Timing: db;dur=3.2;desc="User lookup", cache;dur=0.4, total;dur=7.9` — браузеры показывают
+это в панели сети. `ServerTiming` — свежий сборщик на каждый запрос, хранится атрибутом запроса и
+внедряется по типу (`ServerTiming::of($request)` в middleware); `start()`/`stop()`, `measure()` и
+`add()` записывают миллисекунды. `timingAllowOrigin` разрешает страницам других origin читать
+цифры, `metrics: false` оставляет только общее время. Тайминги рассказывают любому, сколько
+отвечают ваши бэкенды: подумайте, прежде чем открывать их в публичном API.
+
+### Устаревшие маршруты
+
+```php
+#[Get('/v1/users')]
+#[Deprecated(since: '2026-07-01', sunset: '2027-01-01', link: 'https://docs.example.com/v2', successor: 'https://api.example.com/v2/users')]
+public function list(): array { /* ... */ }
+```
+
+Ответы маршрута несут `Deprecation: @1782864000` (RFC 9745), `Sunset: Fri, 01 Jan 2027 00:00:00
+GMT` (RFC 8594), `Link: <...>; rel="deprecation"` и `Link: <...>; rel="successor-version"`; без
+`since` маршрут объявляется устаревшим уже сейчас (`@0`). Операция OpenAPI получает
+`deprecated: true` и `x-sunset`, а `keel:routes` помечает хэндлер. Даты читаются в UTC; sunset
+раньше `since` или URL, который не помещается в заголовок `Link`, — ошибка при компиляции
+маршрутов. Ошибки, брошенные хэндлером, отдаются без этих заголовков. Не путать с атрибутом
+самого PHP `#[\Deprecated]`, из-за которого вызов метода порождает `E_USER_DEPRECATED`.
+
 ## Прочее
 
 - `MethodOverrideMiddleware` — опциональный; подменяет метод только у `POST` и только на
   `PUT`/`PATCH`/`DELETE` по заголовку `X-HTTP-Method-Override`.
 - `SapiEmitter` отправляет ответ через SAPI (php-fpm, встроенный сервер); пример
-  фронт-контроллера — `examples/hello/public/index.php`.
+  фронт-контроллера — `examples/hello/public/index.php`. Неперематываемое тело стримится, см.
+  выше. `SapiEmitter::finish()` завершает ответ для клиента, а скрипт продолжает работу
+  (`fastcgi_finish_request()`, `frankenphp_finish_request()`); `FpmRuntime` вызывает его перед
+  `Kernel::terminate()`.

@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Keel\Console;
 
 use Keel\App\App;
+use Keel\Console\Command\AiInitCommand;
 use Keel\Console\Command\CacheClearCommand;
 use Keel\Console\Command\CompileCommand;
 use Keel\Console\Command\DebugContainerCommand;
 use Keel\Console\Command\DoctorCommand;
+use Keel\Console\Command\InstallCommand;
 use Keel\Console\Command\MakeAuthenticatorCommand;
 use Keel\Console\Command\MakeCheckCommand;
 use Keel\Console\Command\MakeCommandCommand;
@@ -46,6 +48,8 @@ final class ConsoleFactory
             new DoctorCommand($app),
             new OpenApiCommand($app),
             new ServeCommand($app),
+            new InstallCommand($app),
+            new AiInitCommand($app),
             new MakeControllerCommand($app),
             new MakeCommandCommand($app),
             new MakeMiddlewareCommand($app),

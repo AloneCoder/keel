@@ -90,6 +90,44 @@ Every key starts with the prefix (`myapp:cache:`, `myapp:sess:`, `myapp:rl:`, `m
 `RedisProvider::connect()` builds the connection; register `RedisConfig` before loading the
 provider (configs are registered first, so `config/redis.php` is enough).
 
+## Output cache
+
+`#[OutputCache]` serves a route's whole response from the cache: the handler runs once, later
+GET and HEAD requests get the stored copy until it expires or one of its tags is invalidated.
+It needs a PSR-16 `CacheInterface` (`CacheProvider`).
+
+```php
+#[Get('/products/{id}')]
+#[OutputCache(ttl: 300, tags: ['products', 'product:{id}'], varyByQuery: ['lang'], varyByHeaders: ['Accept-Language'])]
+public function show(int $id): ProductView { /* ... */ }
+
+#[Patch('/products/{id}')]
+public function update(int $id, #[FromBody] ProductPatch $patch, OutputCacheStore $pages): ProductView
+{
+    $product = $this->products->update($id, $patch);
+    $pages->invalidateTags('products', "product:$id");
+
+    return ProductView::from($product);
+}
+```
+
+The key is the method, host and path, plus the query string (`varyByQuery: true`, the default;
+`false` ignores it; a list keeps only those parameters), the listed request headers and, with
+`varyByPrincipal: true`, the principal. Tags may name route placeholders (`product:{id}`).
+`invalidateTags()` gives each tag a new version; a stored response remembers the versions it was
+stored with and is stale once one changed, which works on any PSR-16 store without scanning keys.
+Tag versions are stored without expiry, and one that was evicted reads as unknown, so its
+responses become stale rather than fresh again.
+
+Responses get `X-Cache: HIT` or `MISS` (`OutputCacheConfig::$header`, null for none) and, on a
+hit, `Age`. Only 200 responses are stored; never those that set a cookie, say
+`Cache-Control: no-store` or `private`, stream their body or exceed
+`OutputCacheConfig::$maxBodyBytes` (1 MiB). Requests with an `Authorization` header bypass the
+cache unless the route varies by principal and the principal is known by then: declare `#[Auth]`
+before `#[OutputCache]`. Without it such requests bypass the cache rather than share one copy.
+Unlike `#[CacheControl]`, which tells clients and proxies what to keep, this cache saves the work
+on the server.
+
 ## Worker mode
 
 `ArrayCache` is a per-worker cache: with four workers an entry is computed up to four times

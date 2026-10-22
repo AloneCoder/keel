@@ -7,10 +7,14 @@ namespace Keel\OpenApi;
 use Keel\Auth\Attribute\Auth;
 use Keel\Auth\Attribute\Can;
 use Keel\Auth\Authentication;
+use Keel\Http\Attribute\BodyLimit;
+use Keel\Http\Attribute\Deprecated;
 use Keel\Http\Attribute\FromBody;
 use Keel\Http\Attribute\FromFile;
 use Keel\Http\Attribute\FromQuery;
 use Keel\Http\Exception\HttpException;
+use Keel\Idempotency\Attribute\Idempotent;
+use Keel\Idempotency\IdempotencyConfig;
 use Keel\OpenApi\Attribute\Field;
 use Keel\OpenApi\Attribute\Hidden;
 use Keel\OpenApi\Attribute\Operation;
@@ -25,7 +29,9 @@ use Psr\Http\Message\ResponseInterface;
 /**
  * Builds an OpenAPI 3.1 document from the routes: path placeholders, #[FromQuery] and
  * #[FromBody] parameters with their DTO schemas and validation rules, #[Status] and return
- * types or #[Response] attributes, #[Auth] security, #[RateLimit] and Problem Details errors.
+ * types or #[Response] attributes, #[Auth] security, #[RateLimit] and Problem Details errors,
+ * #[Deprecated] (deprecated: true, x-sunset), #[Idempotent] (the Idempotency-Key header, 409
+ * and 422) and #[BodyLimit] (413, 415).
  */
 final class Generator
 {
@@ -35,6 +41,7 @@ final class Generator
         private readonly Router $router,
         private readonly OpenApiConfig $config = new OpenApiConfig(),
         private readonly ?Authentication $authentication = null,
+        private readonly ?IdempotencyConfig $idempotency = null,
     ) {}
 
     /**
@@ -151,11 +158,25 @@ final class Generator
         if ($description !== null) {
             $operation['description'] = $description;
         }
-        if ($methodOp?->deprecated === true || $classOp?->deprecated === true) {
+        $deprecated = $route->option(Deprecated::KEY);
+        if ($methodOp?->deprecated === true || $classOp?->deprecated === true || is_array($deprecated)) {
             $operation['deprecated'] = true;
+        }
+        if (is_array($deprecated) && is_int($deprecated['sunset'] ?? null)) {
+            $operation['x-sunset'] = gmdate('Y-m-d\TH:i:s\Z', $deprecated['sunset']);
         }
 
         [$parameters, $requestBody, $hasInput] = $this->inputs($path, $method, $schemas);
+        $idempotent = $route->option(Idempotent::KEY);
+        if (is_array($idempotent)) {
+            $parameters[] = [
+                'name' => $this->idempotency->header ?? 'Idempotency-Key',
+                'in' => 'header',
+                'required' => ($idempotent['required'] ?? false) === true,
+                'description' => 'Unique key of this operation; a retry with the same key returns the first response',
+                'schema' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 255],
+            ];
+        }
         if ($parameters !== []) {
             $operation['parameters'] = $parameters;
         }
@@ -178,6 +199,19 @@ final class Generator
             }
             if ($route->option(RateLimit::KEY) !== null) {
                 $responses[429] = self::problemResponse('Rate limit exceeded', $usesProblem);
+            }
+            if (is_array($idempotent)) {
+                $responses[409] = self::problemResponse('A request with this key is still being processed', $usesProblem);
+                $responses[422] = self::problemResponse('The key was used for a different request', $usesProblem);
+            }
+            $bodyLimit = $route->option(BodyLimit::KEY);
+            if (is_array($bodyLimit)) {
+                if (is_int($bodyLimit['maxBytes'] ?? null) && $bodyLimit['maxBytes'] > 0) {
+                    $responses[413] = self::problemResponse(sprintf('Request body larger than %d bytes', $bodyLimit['maxBytes']), $usesProblem);
+                }
+                if (is_array($bodyLimit['contentTypes'] ?? null) && $bodyLimit['contentTypes'] !== []) {
+                    $responses[415] = self::problemResponse('Unsupported request body media type', $usesProblem);
+                }
             }
         }
         ksort($responses);

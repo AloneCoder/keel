@@ -1,6 +1,6 @@
 {
     "name": "keel/http",
-    "description": "PSR-15 pipeline, HTTP exceptions, responder, argument resolver with DTO hydration and validation, CORS / request-id / trusted-proxies / method-override middleware, SAPI emitter. Part of the Keel framework.",
+    "description": "PSR-15 pipeline, HTTP exceptions, responder with streaming and Server-Sent Events, argument resolver with DTO hydration and validation, CORS / request-id / trusted-proxies / trusted-hosts / security-headers / body-limit / Server-Timing / HTTP-cache / deprecation / method-override middleware, SAPI emitter. Part of the Keel framework.",
     "type": "library",
     "license": "MIT",
     "homepage": "https://github.com/AloneCoder/keel",
