@@ -30,24 +30,58 @@ before compiling.
 `Pipeline` is a PSR-15 handler: middleware run in declaration order (FIFO); class names are
 resolved from the container on every request, so the container owns their lifetime: a shared
 service is one instance for the whole worker (implement `Resettable` to drop request state), a
-transient one is fresh for each request. A pipeline instance holds no request state and is
-reused across requests.
+transient one is fresh for each request. A `[class, arguments]` pair (what `#[MiddlewareWith]`
+records, also allowed in `HttpConfig`) is built once by the pipeline with the named arguments
+and the rest autowired. A pipeline instance holds no request state and is reused across
+requests.
 
 ## Handler arguments
 
 `ArgumentResolver` fills the controller method parameters, for each parameter in this order:
 
-1. type `ServerRequestInterface`, `RouteMatch` or `Route`: the request or the routing result;
+1. type `ServerRequestInterface`, `RouteMatch`, `Route` or `Input`: the request, the routing
+   result or the [request reader](#input);
 2. `#[FromQuery]`: a DTO is hydrated from all query parameters; a scalar is read from the
    query parameter with the argument's name (missing without a default: 400);
 3. `#[FromBody]`: JSON (`application/json`, `*+json`) or `getParsedBody()`; a DTO is hydrated,
    an `array` receives the body as is; malformed JSON: 400. On a scalar parameter (`string`,
    `int`, ...) the attribute is a configuration error: `LogicException` on the first request;
+   `#[FromHeader('X-Request-Id')]` and `#[FromCookie]` (the cookie named like the parameter, or
+   `#[FromCookie('theme')]`) fill a scalar the same way: cast to the type (400 on mismatch),
+   the default or `null` when absent, 400 without either; `#[FromFile]` binds an upload, see
+   [File storage](storage.md#uploads);
 4. a route placeholder with the parameter's name, cast to the type (`int`, `float`, `bool`,
    `string`, enum); a mismatch: 400;
 5. a service from the container by type (`has()`);
 6. the default value, or `null` for a nullable type;
 7. otherwise `LogicException` (a configuration error, answered with 500).
+
+## Input
+
+`Keel\Http\Input`, injected by type, is the convenient read over the PSR-7 request for the odd
+parameter and for middleware; DTOs with `#[FromQuery]` and `#[FromBody]` stay the typed way in.
+
+```php
+#[Post('/search')]
+public function search(Input $input): array
+{
+    $q = $input->string('q', '');             // query and body merged, body wins
+    $page = $input->int('page', 1);           // cast like the hydrator; "abc" is 400
+    $city = $input->get('address.city');      // dotted paths into nested data
+    $tags = $input->array('tags', []);
+    $token = $input->bearerToken();
+    $ip = $input->ip();                       // from TrustedProxiesMiddleware, else REMOTE_ADDR
+    // ...
+}
+```
+
+`all()`, `get($key, $default)`, `has()`, `filled()` (not null, "" or []), `only()`, `except()`,
+`query()`, `string()`/`int()`/`float()`/`bool()`/`array()` with a default for an absent key,
+`param($name)` (a route placeholder), `header()`, `cookie()`, `file()`/`files()` (uploads),
+`bearerToken()`, `ip()`, `method()`, `path()`, `isSecure()`, `isJson()` (JSON body),
+`wantsJson()` (JSON first in `Accept`, or a JSON body without `Accept`), `isAjax()`, and
+`request()` for everything else. The body is read on first use and only for methods other than
+GET and HEAD; malformed JSON is 400.
 
 ## Hydrator
 
@@ -100,6 +134,7 @@ the defaults or the upper bound.
 | `ResponseInterface` | as is (status replaced when `#[Status]` is set) |
 | `null` | 204 without body |
 | `string` | `text/html; charset=utf-8` |
+| `Keel\Http\Redirect` | 3xx with `Location`: `Redirect::to('/login')`, `Redirect::route('users.show', ['id' => 5], 303)`, see [Routing](routing.md#redirects) |
 | array, `JsonSerializable`, object | `application/json` with `JSON_UNESCAPED_UNICODE`, `JSON_UNESCAPED_SLASHES`, `JSON_PRESERVE_ZERO_FRACTION` |
 
 ## Errors: RFC 9457 Problem Details
@@ -147,7 +182,11 @@ final readonly class SignUp
 }
 ```
 
-Rules: `NotBlank`, `Length`, `Range`, `Count`, `Pattern`, `Email`, `Url`, `Choice`. A rule runs
+Rules: `NotBlank`, `Length`, `Range`, `Count`, `Pattern`, `Alnum(allow: '-_')`, `Email`, `Url`,
+`Uuid`, `Ip(version: 4|6)`, `Hostname`, `Date(format: 'Y-m-d')`, `Json`, `Timezone`, `Choice`,
+`Unique` (no duplicate items) and `Each(new NotBlank(), new Length(max: 30))`, which runs its
+rules on every item of an array and reports the first failing one as `tags: [2]: must not be
+blank`. A rule runs
 only on fields that were sent; `null` is checked by `NotBlank` alone; after a type error the
 field's rules are skipped. A custom rule is an attribute class implementing
 `Keel\Validation\Rule::check()`.
@@ -161,6 +200,8 @@ Listed in `HttpConfig`; their settings are plain config objects in `config/`:
 | `CorsMiddleware` | `CorsConfig` | answers preflights (204) before routing, adds `Access-Control-*`; origins exact, `*` or patterns like `https://*.example.com`; `allowCredentials` requires an explicit origin list (`*` is refused in the constructor) |
 | `RequestIdMiddleware` | — | trusts a well-formed `X-Request-Id` or issues one; `request_id` attribute and response header |
 | `TrustedProxiesMiddleware` | `TrustedProxiesConfig` | applies `X-Forwarded-For/Proto/Host/Port` only from trusted CIDRs; client IP in the `client_ip` attribute |
+| `HttpCacheMiddleware` | `HttpCacheConfig` | `Cache-Control` and `ETag` for 200 responses to GET/HEAD, 304 on `If-None-Match` / `If-Modified-Since`; see below |
+| `CsrfMiddleware` | `CsrfConfig` | synchronizer token on top of the session, see [Sessions](session.md#csrf-protection) |
 
 `TrustedProxiesMiddleware` takes the rightmost `X-Forwarded-For` address that is not itself a
 trusted proxy. When every hop is trusted, as with `proxies: ['*']`, it takes the rightmost valid
@@ -172,6 +213,36 @@ listening socket unless `X-Forwarded-Port` or a port in `X-Forwarded-Host` says 
 | `HealthMiddleware` | `HealthConfig` | `/health` and `/health/live`, see [Health and metrics](observability.md) |
 | `MetricsMiddleware` | `MetricsConfig` | Prometheus metrics and `/metrics` |
 | `OpenApiMiddleware` | `OpenApiConfig` | `/openapi.json` and `/docs`, see [OpenAPI](openapi.md) |
+
+### HTTP caching
+
+`HttpCacheMiddleware` acts on 200 responses to GET and HEAD. It adds the configured
+`Cache-Control` when the handler set none, an `ETag` hashed from the body when the handler set
+none (`etag: false` turns that off), and answers a request whose `If-None-Match` matches the
+ETag (weak comparison, lists and `*` understood) or whose `If-Modified-Since` is not older than
+the response's `Last-Modified` with an empty 304 that keeps the validators and caching headers.
+The handler still runs: what is saved is the transfer, not the work.
+
+```php
+// config/http_cache.php: defaults for the global middleware
+return new HttpCacheConfig(etag: true);
+
+// per route or per controller
+#[Get('/catalog')]
+#[CacheControl(maxAge: 300, public: true)]            // public, max-age=300 + ETag
+public function catalog(): array { /* ... */ }
+
+#[Get('/me')]
+#[CacheControl(noStore: true)]                        // no-store, no ETag
+public function me(Principal $user): array { /* ... */ }
+```
+
+`#[CacheControl(maxAge, sharedMaxAge, public, mustRevalidate, immutable, noStore, etag)]` adds
+the middleware to the route with its own settings, so it works without the global middleware
+and overrides `HttpCacheConfig` when both are present. Global middleware runs before routing
+and therefore sees only the config; the attribute is what makes settings per route. Hashing
+reads the whole body, so leave `etag` off for large downloads and streams (a non-seekable body
+is skipped anyway).
 
 ## Miscellaneous
 

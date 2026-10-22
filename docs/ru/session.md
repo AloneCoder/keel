@@ -27,8 +27,9 @@ public function login(#[FromBody] Login $cmd, Session $session): array
 | `cookie` (по умолчанию) | в самой cookie, подписанной HMAC-SHA256, со сроком годности | нет серверного состояния, масштабируется горизонтально; данные видны клиенту (не секреты), лимит 4 КБ |
 | `file` | `<filePath>/sess_<id>.json`, в cookie только подписанная id | данные скрыты от клиента, больше 4 КБ; нужна общая файловая система или одна нода |
 
-Своё хранилище (Redis и т.п.): реализуйте `SessionStorageInterface` (`read`, `write`, `destroy`) и
-передайте вторым аргументом `SessionMiddleware` через определение в провайдере. Реализуйте ещё и
+`Keel\Session\RedisStorage` хранит сессии в Redis: `RedisConfig(use: ['sessions'])` с
+`RedisProvider`, см. [Кэш](cache.md#redis). Любое другое хранилище реализует
+`SessionStorageInterface` (`read`, `write`, `destroy`) и регистрируется под этим интерфейсом. Реализуйте ещё и
 `SessionExpiry` (`expiresAt`) — тогда middleware сможет продлевать стареющие сессии (см. ниже).
 
 **Cookie-хранилище подписано, но не отзываемо.** `destroy()` снимает cookie в браузере, но её
@@ -65,3 +66,30 @@ API `Session`: `get`, `set`, `has`, `remove`, `pull` (flash), `all`, `clear`, `r
 Инъекция по атрибуту работает для любого объекта: middleware кладёт объект в запрос под именем
 его класса (`$request->withAttribute(Identity::class, $identity)`), и параметр `Identity $identity`
 в хэндлере получает его без обращения к контейнеру.
+
+## Защита от CSRF
+
+`CsrfMiddleware`, указанный в `HttpConfig` после `SessionMiddleware`, хранит в сессии
+synchronizer-токен (создаётся при первом запросе и живёт вместе с сессией) и оставляет на
+запросе `CsrfToken`. Запрос с небезопасным методом (всё кроме GET, HEAD, OPTIONS, TRACE) обязан
+повторить токен в поле формы `_token` или заголовке `X-CSRF-Token`, иначе получит 403
+`Invalid CSRF token`.
+
+```php
+// config/csrf.php (необязательно)
+return new CsrfConfig(field: '_token', header: 'X-CSRF-Token', except: ['/api/']);
+
+#[Get('/profile')]
+public function form(CsrfToken $csrf): string
+{
+    return '<form method="post">' . $csrf->field() . '...</form>';   // скрытое поле
+}
+```
+
+`CsrfToken::$value` уходит в заголовок `fetch()`; `field()` рендерит скрытое поле;
+`CsrfMiddleware::token($request)` читает токен из middleware. `except` перечисляет префиксы
+путей без проверки: API, который аутентифицируется bearer-токеном или API-ключом, недоступен с
+cookie браузера и в токене не нуждается. Чтобы сменить токен (например, после входа), удалите
+ключ сессии (`_csrf` по умолчанию) — следующий запрос получит новый. При cookie-хранилище токен
+едет внутри подписанной cookie, и это нормально: страница атакующего прочитать его не может, а
+только на этом проверка и держится.

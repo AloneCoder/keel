@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Keel\OpenApi;
 
 use Keel\Auth\Attribute\Auth;
+use Keel\Auth\Attribute\Can;
 use Keel\Auth\Authentication;
 use Keel\Http\Attribute\FromBody;
+use Keel\Http\Attribute\FromFile;
 use Keel\Http\Attribute\FromQuery;
 use Keel\Http\Exception\HttpException;
 use Keel\OpenApi\Attribute\Field;
@@ -14,6 +16,8 @@ use Keel\OpenApi\Attribute\Hidden;
 use Keel\OpenApi\Attribute\Operation;
 use Keel\OpenApi\Attribute\Response;
 use Keel\RateLimit\Attribute\RateLimit;
+use Keel\Routing\PathParser;
+use Keel\Routing\Redirector;
 use Keel\Routing\Route;
 use Keel\Routing\Router;
 use Psr\Http\Message\ResponseInterface;
@@ -46,20 +50,27 @@ final class Generator
 
         foreach ($this->router->routes() as $route) {
             [$class, $methodName] = $route->handler;
+            if ($class === Redirector::class) {
+                continue; // redirect routes carry no operation worth documenting
+            }
             $controller = new \ReflectionClass($class);
             $method = $controller->getMethod($methodName);
             if ($controller->getAttributes(Hidden::class) !== [] || $method->getAttributes(Hidden::class) !== []) {
                 continue;
             }
 
-            $operation = $this->operation($route, $controller, $method, $schemas, array_keys($securitySchemes), $usesProblem);
-            $path = $route->template();
-            $baseId = $operation['operationId'];
-            $several = count($route->methods) > 1;
-            foreach ($route->methods as $httpMethod) {
-                $verb = strtolower($httpMethod);
-                $operation['operationId'] = self::uniqueOperationId($baseId . ($several ? ucfirst($verb) : ''), $operationIds);
-                $paths[$path][$verb] = $operation;
+            // A path with optional segments is several OpenAPI paths: one operation per variant,
+            // each listing only the placeholders that variant has.
+            foreach (new PathParser()->expand($route->path) as $variant) {
+                $operation = $this->operation($route, $variant, $controller, $method, $schemas, array_keys($securitySchemes), $usesProblem);
+                $path = (string) preg_replace(Route::PLACEHOLDER, '{$1}', $variant);
+                $baseId = $operation['operationId'];
+                $several = count($route->methods) > 1;
+                foreach ($route->methods as $httpMethod) {
+                    $verb = strtolower($httpMethod);
+                    $operation['operationId'] = self::uniqueOperationId($baseId . ($several ? ucfirst($verb) : ''), $operationIds);
+                    $paths[$path][$verb] = $operation;
+                }
             }
         }
 
@@ -117,6 +128,7 @@ final class Generator
      */
     private function operation(
         Route $route,
+        string $path,
         \ReflectionClass $controller,
         \ReflectionMethod $method,
         SchemaBuilder $schemas,
@@ -143,7 +155,7 @@ final class Generator
             $operation['deprecated'] = true;
         }
 
-        [$parameters, $requestBody, $hasInput] = $this->inputs($route, $method, $schemas);
+        [$parameters, $requestBody, $hasInput] = $this->inputs($path, $method, $schemas);
         if ($parameters !== []) {
             $operation['parameters'] = $parameters;
         }
@@ -153,14 +165,15 @@ final class Generator
 
         $responses = $this->responses($route, $method, $schemas);
         $auth = $route->option(Auth::KEY);
+        $can = $route->option(Can::KEY);
         if ($this->config->problemDetails) {
             if ($hasInput) {
                 $responses[400] = self::problemResponse('Invalid request data', $usesProblem);
             }
-            if (is_array($auth)) {
+            if (is_array($auth) || is_array($can)) {
                 $responses[401] = self::problemResponse('Authentication required', $usesProblem);
-                if (($auth['roles'] ?? []) !== []) {
-                    $responses[403] = self::problemResponse('Insufficient role', $usesProblem);
+                if ((is_array($auth) && ($auth['roles'] ?? []) !== []) || is_array($can)) {
+                    $responses[403] = self::problemResponse(is_array($can) ? 'Not allowed' : 'Insufficient role', $usesProblem);
                 }
             }
             if ($route->option(RateLimit::KEY) !== null) {
@@ -170,7 +183,7 @@ final class Generator
         ksort($responses);
         $operation['responses'] = array_combine(array_map(strval(...), array_keys($responses)), $responses);
 
-        if (is_array($auth) && $securitySchemes !== []) {
+        if ((is_array($auth) || is_array($can)) && $securitySchemes !== []) {
             $operation['security'] = array_map(static fn(string $scheme): array => [$scheme => []], $securitySchemes);
         }
 
@@ -180,7 +193,7 @@ final class Generator
     /**
      * @return array{0: list<array<string, mixed>>, 1: array<string, mixed>|null, 2: bool}
      */
-    private function inputs(Route $route, \ReflectionMethod $method, SchemaBuilder $schemas): array
+    private function inputs(string $path, \ReflectionMethod $method, SchemaBuilder $schemas): array
     {
         $parameters = [];
         $byName = [];
@@ -188,7 +201,7 @@ final class Generator
             $byName[$parameter->getName()] = $parameter;
         }
 
-        preg_match_all(Route::PLACEHOLDER, $route->path, $matches, \PREG_SET_ORDER);
+        preg_match_all(Route::PLACEHOLDER, $path, $matches, \PREG_SET_ORDER);
         foreach ($matches as $match) {
             $name = $match[1];
             $schema = isset($byName[$name]) ? $schemas->forParameter($byName[$name]) : ['type' => 'string'];
@@ -200,11 +213,19 @@ final class Generator
         }
 
         $requestBody = null;
+        $files = [];
         foreach ($method->getParameters() as $parameter) {
             $type = $parameter->getType();
             $class = $type instanceof \ReflectionNamedType && !$type->isBuiltin() ? $type->getName() : null;
 
-            if ($parameter->getAttributes(FromQuery::class) !== []) {
+            if ($parameter->getAttributes(FromFile::class) !== []) {
+                $name = $parameter->getAttributes(FromFile::class)[0]->newInstance()->name ?? $parameter->getName();
+                $binary = ['type' => 'string', 'format' => 'binary'];
+                $files[$name] = [
+                    'schema' => $class === null && $type instanceof \ReflectionNamedType && in_array($type->getName(), ['array', 'iterable'], true) ? ['type' => 'array', 'items' => $binary] : $binary,
+                    'required' => !$parameter->isDefaultValueAvailable() && !$parameter->allowsNull(),
+                ];
+            } elseif ($parameter->getAttributes(FromQuery::class) !== []) {
                 if ($class !== null && class_exists($class)) {
                     foreach (self::constructorParameters($class) as $field) {
                         $parameters[] = self::queryParameter($field, $schemas);
@@ -216,6 +237,31 @@ final class Generator
                 $schema = $class !== null && class_exists($class) ? $schemas->classSchema($class) : ['type' => 'object'];
                 $requestBody = ['required' => true, 'content' => ['application/json' => ['schema' => $schema]]];
             }
+        }
+
+        if ($files !== []) {
+            // Uploads make the body multipart; a JSON DTO beside them is documented as its fields.
+            $properties = [];
+            $required = [];
+            $existing = $requestBody['content']['application/json']['schema'] ?? null;
+            if (is_array($existing) && isset($existing['$ref']) && is_string($existing['$ref'])) {
+                $component = $schemas->schemas()[substr($existing['$ref'], strlen('#/components/schemas/'))] ?? null;
+                if (is_array($component)) {
+                    $properties = is_array($component['properties'] ?? null) ? $component['properties'] : [];
+                    $required = is_array($component['required'] ?? null) ? $component['required'] : [];
+                }
+            }
+            foreach ($files as $name => $file) {
+                $properties[$name] = $file['schema'];
+                if ($file['required']) {
+                    $required[] = $name;
+                }
+            }
+            $schema = ['type' => 'object', 'properties' => $properties];
+            if ($required !== []) {
+                $schema['required'] = array_values(array_unique(array_filter($required, is_string(...))));
+            }
+            $requestBody = ['required' => true, 'content' => ['multipart/form-data' => ['schema' => $schema]]];
         }
 
         return [$parameters, $requestBody, $parameters !== [] || $requestBody !== null];

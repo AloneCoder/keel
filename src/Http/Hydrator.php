@@ -40,6 +40,54 @@ final class Hydrator
     }
 
     /**
+     * Runs the Rule attributes of a parameter on a value the resolver obtained itself (an
+     * uploaded file). Throws 400 with the collected messages.
+     */
+    public function check(mixed $value, \ReflectionParameter $parameter, string $path): void
+    {
+        $errors = [];
+        $this->validate($value, $parameter, $path, $errors);
+        if ($errors !== []) {
+            throw new BadRequestException('Invalid request data', [], $errors);
+        }
+    }
+
+    /**
+     * Casts one value with the same rules as DTO hydration ("3" is 3, "true" is true). Throws 400 on mismatch.
+     */
+    public function int(mixed $value, string $path): int
+    {
+        $errors = [];
+        $result = $this->toInt($value, $path, $errors);
+
+        return $result ?? throw new BadRequestException('Invalid request data', [], $errors);
+    }
+
+    public function float(mixed $value, string $path): float
+    {
+        $errors = [];
+        $result = $this->toFloat($value, $path, $errors);
+
+        return $result ?? throw new BadRequestException('Invalid request data', [], $errors);
+    }
+
+    public function bool(mixed $value, string $path): bool
+    {
+        $errors = [];
+        $result = $this->toBool($value, $path, $errors);
+
+        return $result ?? throw new BadRequestException('Invalid request data', [], $errors);
+    }
+
+    public function string(mixed $value, string $path): string
+    {
+        $errors = [];
+        $result = $this->toString($value, $path, $errors);
+
+        return $result ?? throw new BadRequestException('Invalid request data', [], $errors);
+    }
+
+    /**
      * Casts one value to the type of a parameter. Throws 400 on mismatch.
      */
     public function cast(mixed $value, \ReflectionParameter $parameter, string $path): mixed

@@ -121,26 +121,36 @@ $this->events->dispatch(new Greeted($name));   // EventDispatcherInterface из 
 
 Если приложение не зарегистрировало `Psr\Log\LoggerInterface`, `App::boot()` подключает
 `Keel\Log\StreamLogger`: PSR-3 без зависимостей, одна JSON-строка на запись в `php://stderr`
-(их собирают FrankenPHP, RoadRunner и Docker). Настройки — `LoggerConfig` в `config/logger.php`:
-поток, минимальный уровень, канал, JSON или текст. Исключения в контексте превращаются в класс,
-сообщение и место; `{placeholders}` подставляются из контекста.
-
-Monolog подключается провайдером:
+(их собирают FrankenPHP, RoadRunner и Docker). Настройки — `LoggerConfig` в `config/logger.php`.
+Исключения в контексте превращаются в класс, сообщение и место; `{placeholders}` подставляются
+из контекста.
 
 ```php
-final class LogProvider implements ServiceProvider
-{
-    public function register(Definitions $d): void
-    {
-        $d->set(Logger::class)->factory([self::class, 'monolog'])->alias(LoggerInterface::class);
-    }
-
-    public static function monolog(LoggerConfig $config): Logger
-    {
-        return new Logger($config->channel)->pushHandler(new StreamHandler($config->stream));
-    }
-}
+// config/logger.php
+return static fn(string $projectDir): LoggerConfig => new LoggerConfig(
+    stream: 'php://stderr', level: 'debug', channel: 'app', json: true,   // канал по умолчанию
+    channels: [
+        'audit' => new ChannelConfig(stream: $projectDir . '/var/log/audit.log', level: 'info', rotate: 'daily'),
+        'security' => new ChannelConfig(syslog: 'myapp'),                 // локальный syslog под этим ident
+    ],
+);
 ```
+
+- **Каналы.** `Loggers::channel('audit')` — PSR-3-логгер именованного канала; каждый
+  `ChannelConfig` перекрывает только те умолчания, что задаёт (поток, уровень, JSON или текст,
+  ротация, syslog). Канал по умолчанию — `LoggerInterface` контейнера.
+- **Ротация.** `rotate: 'daily'` превращает файловый поток `var/log/app.log` в
+  `var/log/app-2026-10-22.log` и переоткрывает его при смене даты; старые файлы удаляйте сами.
+- **Контекст запроса.** `LogContextMiddleware`, указанный в `HttpConfig` после
+  `RequestIdMiddleware`, `TrustedProxiesMiddleware` и `AuthMiddleware`, заполняет `LogContext`
+  полями `request_id`, `method`, `path`, `client_ip` и `principal`; каждая запись запроса несёт
+  их (собственный контекст записи побеждает). `LogContext::set()` добавляет свои (`tenant`);
+  контейнер сбрасывает его между запросами. `context: false` в конфиге отключает слияние.
+- **Monolog.** Загрузите `MonologProvider` (`composer require monolog/monolog`), и тот же
+  конфиг управляет Monolog: по `Monolog\Logger` на канал со `StreamHandler`,
+  `RotatingFileHandler` или `SyslogHandler`, `JsonFormatter` или `LineFormatter`, контекст
+  запроса в `extra`; `LoggerInterface` и `Loggers` резолвятся в логгеры Monolog. Любой другой
+  PSR-3-логгер по-прежнему подключается алиасом `LoggerInterface` в провайдере.
 
 ## Консоль
 
@@ -160,7 +170,8 @@ final class LogProvider implements ServiceProvider
   пайплайне деплоя. `--skip-health` пропускает проверки здоровья, когда они ходят в базу;
 - `keel:make:controller`, `keel:make:command`, `keel:make:middleware`, `keel:make:listener`,
   `keel:make:check` (проверка здоровья с тегом), `keel:make:authenticator` (`PrincipalResolver`,
-  а с `--scheme` — полный `Authenticator`) — генераторы классов в namespace проекта
+  а с `--scheme` — полный `Authenticator`), `keel:make:policy Post [abilities...]` (`Policy` с
+  тегом для `Gate`) — генераторы классов в namespace проекта
   (из `composer.json`), без перезаписи без `--force`;
 - `keel:preload` — записать `var/cache/<env>/preload.php` для `opcache.preload`: все файлы, которые
   приложение загружает на старте и при запросе, в порядке загрузки. С preload классы линкуются один

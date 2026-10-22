@@ -108,8 +108,9 @@ Samples live in a `MetricsStorage`: APCu when the extension is loaded, so every 
 FrankenPHP thread of a server adds to the same numbers, otherwise the memory of the current
 process (one worker's view). Values are integers internally; gauges and histogram sums are scaled
 by 10⁶, which keeps APCu's atomic increments usable for durations and caps a single gauge or sum
-at about ±9.2·10¹² (larger values are clamped). Register an implementation under
-`MetricsStorage` for anything else.
+at about ±9.2·10¹² (larger values are clamped). `Keel\Metrics\RedisStorage` aggregates the whole
+fleet in one Redis hash (`RedisConfig(use: ['metrics'])`, see [Cache](cache.md#redis)); register
+an implementation under `MetricsStorage` for anything else.
 
 ## Tracing (OpenTelemetry)
 

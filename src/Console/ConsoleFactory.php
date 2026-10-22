@@ -15,6 +15,7 @@ use Keel\Console\Command\MakeCommandCommand;
 use Keel\Console\Command\MakeControllerCommand;
 use Keel\Console\Command\MakeListenerCommand;
 use Keel\Console\Command\MakeMiddlewareCommand;
+use Keel\Console\Command\MakePolicyCommand;
 use Keel\Console\Command\OpenApiCommand;
 use Keel\Console\Command\PreloadCommand;
 use Keel\Console\Command\RoutesCommand;
@@ -51,6 +52,7 @@ final class ConsoleFactory
             new MakeListenerCommand($app),
             new MakeCheckCommand($app),
             new MakeAuthenticatorCommand($app),
+            new MakePolicyCommand($app),
         ]);
         $console->setCommandLoader(new ContainerCommandLoader($app->container, $app->commands()));
 

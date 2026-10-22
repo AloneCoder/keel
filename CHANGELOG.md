@@ -12,6 +12,56 @@ now throw at construction or compile time (listed under Changed).
 
 ### Added
 
+- **Routing**: `#[MiddlewareWith(Throttle::class, limit: 5)]` adds a middleware built with
+  constructor arguments (named ones to the constructor, the rest autowired, once per route);
+  route and global middleware lists accept `[class, arguments]` pairs; `keel:routes` shows them.
+- **HTTP**: `Keel\Http\Input`, injected by type: query and body merged, dotted paths, typed
+  readers cast like the hydrator (400 on mismatch), headers, cookies, uploads, bearer token,
+  client IP, content negotiation. `#[FromHeader('X-Name')]` and `#[FromCookie]` bind scalars;
+  `#[FromFile]` binds uploads (single, nullable or an array) with the `#[File]` rule (max size,
+  sniffed MIME types, extensions) and a `multipart/form-data` request body in OpenAPI.
+  `Hydrator` gains `int()`, `float()`, `bool()`, `string()` and `check()`.
+- **Log**: named channels (`LoggerConfig::$channels` of `ChannelConfig`: stream, level, JSON or
+  text, `rotate: 'daily'`, `syslog`) through `Loggers::channel()`; `LogContext` +
+  `LogContextMiddleware` put `request_id`, `method`, `path`, `client_ip` and `principal` into
+  every record of a request; `MonologProvider` drives Monolog from the same config.
+- **Cache**: `Keel\Cache\Cache` with `remember()`, `RedisCache` (`driver: 'redis'`) and
+  `MemcachedCache` (`driver: 'memcached'`, `CacheConfig::$servers`).
+- **Redis** (`Keel\Redis`): `RedisConfig` (`fromUrl()`), `RedisProvider` registering the `\Redis`
+  connection, `RedisCheck` for `/health`, and per `use` the Redis storages for sessions
+  (`Session\RedisStorage`), rate-limit counters (`RateLimit\RedisCounters`) and metrics
+  (`Metrics\RedisStorage`).
+- **Storage** (`Keel\Storage`): `Storage` interface, `LocalStorage` (atomic writes, path
+  hygiene), `FlysystemStorage`, `DiskConfig`/`StorageConfig`/`Disks`/`StorageProvider`.
+- **I18n** (`Keel\I18n`): `Translator`/`ArrayTranslator` over PHP message files with
+  placeholders, `|` plural forms by CLDR rules (ICU through ext-intl when present), domains and
+  fallback; `LocaleMiddleware` (path prefix, query, session, cookie, `Accept-Language`); `Locale`
+  by type; `I18nProvider`; `trans` filter and function for Twig and Latte.
+- `monolog/monolog` and `league/flysystem` are suggested; both are dev dependencies for the tests.
+- **Routing**: optional trailing segments in FastRoute syntax, `/users[/{id:\d+}[/{tab}]]`,
+  compiled as several variants of one route; a short match leaves the placeholder out and the
+  handler argument takes its default. `Router::generate()` picks the longest variant the given
+  parameters satisfy; `Route::templates()` lists the variants; the OpenAPI document gets one
+  path per variant.
+- **Routing**: parent classes are route groups. `#[Prefix]`, `#[Middleware]` and `RouteOption`
+  attributes on an abstract parent apply to every subclass: prefixes joined root-first, parent
+  middleware first, options overridable below.
+- **Routing**: `#[Redirect(from, to, status, methods, name)]` on a controller class declares a
+  redirect route without a method, served by `Keel\Routing\Redirector` with the matched
+  placeholders substituted into the target; `keel:routes` shows it as `redirect 308 -> /new`.
+- **HTTP**: `Keel\Http\Redirect` as a handler return value (`Redirect::to()`, `Redirect::route()`)
+  and `Responder::redirect()`; the `Responder` takes an optional `Router` for named redirects.
+- **HTTP**: `HttpCacheMiddleware` + `HttpCacheConfig` (`Cache-Control`, body-hashed `ETag`, 304 on
+  `If-None-Match` and `If-Modified-Since`) and `#[CacheControl]` for per-route settings.
+- **Session**: `CsrfMiddleware`, `CsrfConfig` and `CsrfToken` (synchronizer token in the session,
+  checked on unsafe methods from the `_token` field or the `X-CSRF-Token` header, exempt prefixes).
+- **Auth**: policies. `Policy` (tagged `keel.policy`, declares abilities), `Gate` (`allows`,
+  `denies`, `authorize`), `#[Can('ability')]` adding `PolicyGuard` with the route parameters as
+  the subject, `keel:make:policy`; `keel:routes` and the OpenAPI document reflect `#[Can]`.
+- **Validation**: `Uuid`, `Ip`, `Date`, `Alnum`, `Hostname`, `Json`, `Timezone`, `Unique` and
+  `Each` (rules per array item), all mapped into the OpenAPI schema where JSON Schema has a word
+  for them.
+- `keel/router` now requires `psr/http-factory` (the `Redirector` builds responses).
 - `keel:doctor`: a check-up of the installation (PHP, extensions, configuration, cache directory and
   files, runtime and worker limits, optional packages, a dry run of the container, routes, storage
   directories, health checks) with `OK`/`WARN`/`FAIL` lines and exit code 1 on a failure.

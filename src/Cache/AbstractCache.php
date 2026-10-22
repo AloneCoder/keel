@@ -4,15 +4,27 @@ declare(strict_types=1);
 
 namespace Keel\Cache;
 
-use Psr\SimpleCache\CacheInterface;
-
 /**
  * PSR-16 plumbing shared by the built-in drivers: key validation, TTL normalisation,
- * the *Multiple methods.
+ * the *Multiple methods and remember().
  */
-abstract class AbstractCache implements CacheInterface
+abstract class AbstractCache implements Cache
 {
     public function __construct(protected readonly ?int $defaultTtl = null) {}
+
+    public function remember(string $key, int|\DateInterval|null $ttl, \Closure $compute): mixed
+    {
+        $missing = new \stdClass();
+        $value = $this->get($key, $missing);
+        if ($value !== $missing) {
+            return $value;
+        }
+
+        $value = $compute();
+        $this->set($key, $value, $ttl);
+
+        return $value;
+    }
 
     /**
      * @param iterable<string> $keys

@@ -7,6 +7,7 @@ namespace Keel\Tests\Cache;
 use Keel\Cache\AbstractCache;
 use Keel\Cache\ApcuCache;
 use Keel\Cache\ArrayCache;
+use Keel\Cache\Cache;
 use Keel\Cache\CacheConfig;
 use Keel\Cache\CacheProvider;
 use Keel\Cache\FileCache;
@@ -170,8 +171,43 @@ final class CacheTest extends TestCase
         $auto = CacheProvider::create();
         self::assertInstanceOf(ApcuCache::available() ? ApcuCache::class : FileCache::class, $auto);
 
+        self::assertInstanceOf(Cache::class, $auto);
+        self::assertSame($container->get(CacheInterface::class), $container->get(Cache::class), 'Keel\\Cache\\Cache is an alias of the PSR interface');
+
+        try {
+            CacheProvider::create(new CacheConfig('redis'));
+            self::fail('redis without a connection accepted');
+        } catch (\LogicException $e) {
+            self::assertStringContainsString('RedisProvider', $e->getMessage());
+        }
+        if (!class_exists(\Memcached::class)) {
+            try {
+                CacheProvider::create(new CacheConfig('memcached'));
+                self::fail('memcached without the extension accepted');
+            } catch (\RuntimeException $e) {
+                self::assertStringContainsString('ext-memcached', $e->getMessage());
+            }
+        }
+
         $this->expectException(\InvalidArgumentException::class);
-        CacheProvider::create(new CacheConfig('redis'));
+        CacheProvider::create(new CacheConfig('memory'));
+    }
+
+    public function testRememberComputesOnceAndKeepsNull(): void
+    {
+        $cache = new ArrayCache();
+        $calls = 0;
+        $compute = static function () use (&$calls): ?string {
+            $calls++;
+
+            return $calls === 1 ? null : 'later';
+        };
+
+        self::assertNull($cache->remember('k', 60, $compute));
+        self::assertNull($cache->remember('k', 60, $compute), 'a stored null is a hit');
+        self::assertSame(1, $calls);
+        self::assertSame('v', $cache->remember('other', null, static fn(): string => 'v'));
+        self::assertSame('v', $cache->get('other'));
     }
 
     public function testApcuCacheRefusesToStartWithoutTheExtension(): void

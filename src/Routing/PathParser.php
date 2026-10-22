@@ -18,6 +18,45 @@ final class PathParser
     private const string PLACEHOLDER = '~\{([a-zA-Z_][a-zA-Z0-9_]*)(?::((?:[^{}]|\{(?-1)\})*))?\}~';
 
     /**
+     * Expands optional trailing segments into the paths they stand for: "/users[/{id}[/{tab}]]"
+     * yields "/users", "/users/{id}" and "/users/{id}/{tab}", shortest first (FastRoute syntax).
+     * Optional parts are only allowed at the end of the path, nested or not; a "[" inside a
+     * placeholder constraint ("{slug:[a-z]+}") is a character class, not a marker.
+     *
+     * @return list<string>
+     */
+    public function expand(string $path): array
+    {
+        // Mask placeholders (same length, so offsets stay valid) so their constraints are not read as markers.
+        $masked = (string) preg_replace_callback(self::PLACEHOLDER, static fn(array $m): string => str_repeat("\0", strlen($m[0])), $path);
+        if (!str_contains($masked, '[') && !str_contains($masked, ']')) {
+            return [$path];
+        }
+
+        $open = substr_count($masked, '[');
+        $trailing = strlen($masked) - strlen(rtrim($masked, ']'));
+        if ($open === 0 || $open !== substr_count($masked, ']') || $trailing !== $open) {
+            throw new RoutingException(sprintf('Optional segments in "%s" must be bracketed at the end of the path: "/users[/{id}]"', $path));
+        }
+
+        $body = substr($masked, 0, -$trailing);
+        $parts = explode('[', $body);
+        $variants = [];
+        $offset = 0;
+        $current = '';
+        foreach ($parts as $i => $part) {
+            if ($i > 0 && $part === '') {
+                throw new RoutingException(sprintf('Empty optional segment in "%s"', $path));
+            }
+            $current .= substr($path, $offset, strlen($part));
+            $offset += strlen($part) + 1;
+            $variants[] = $current;
+        }
+
+        return $variants;
+    }
+
+    /**
      * @return array{regex: string|null, variables: list<string>, patterns: list<string>} regex is null for static paths;
      *                                                                                   patterns are the sanitised per-placeholder constraints, in placeholder order
      */

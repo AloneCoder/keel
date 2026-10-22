@@ -21,6 +21,7 @@ use Keel\Discovery\ServiceDiscovery;
 use Keel\Event\EventDispatcher;
 use Keel\Event\ListenerProvider;
 use Keel\Kernel\Kernel;
+use Keel\Log\LogContext;
 use Keel\Log\StreamLogger;
 use Keel\Routing\Router;
 use Psr\EventDispatcher\EventDispatcherInterface;
@@ -158,6 +159,9 @@ final class AppBuilder
         Kernel::registerDefaults($definitions);
         if ($definitions->definition(StreamLogger::class) === null && self::unbound($definitions, LoggerInterface::class)) {
             $definitions->set(StreamLogger::class)->alias(LoggerInterface::class);
+        }
+        if ($definitions->definition(LogContext::class) === null) {
+            $definitions->set(LogContext::class);
         }
         $configure?->__invoke($definitions, $env);
 

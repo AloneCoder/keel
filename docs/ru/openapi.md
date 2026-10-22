@@ -34,15 +34,15 @@ Scalar с jsDelivr, закреплённый на версии; через `docs
 
 | Источник | В документе |
 |---|---|
-| путь маршрута `/users/{id:\d+}` | путь `/users/{id}`, обязательный path-параметр с типом из аргумента хэндлера, `pattern` из ограничения |
+| путь маршрута `/users/{id:\d+}` | путь `/users/{id}`, обязательный path-параметр с типом из аргумента хэндлера, `pattern` из ограничения; опциональные сегменты (`/users[/{id}]`) дают по пути на вариант, каждый со своими параметрами; маршруты `#[Redirect]` не попадают |
 | `#[FromQuery] Filter $f` | по query-параметру на каждый параметр конструктора DTO; обязателен, если нет default и тип не nullable |
 | `#[FromQuery] int $page = 1` | один query-параметр |
 | `#[FromBody] CreateUser $c` | `requestBody` со ссылкой `$ref` на схему компонента `CreateUser` |
 | параметр конструктора DTO | свойство с типом из сигнатуры: скаляры, nullable (`type: [string, null]`), union (`oneOf`), backed и unit enum (`enum`), вложенные DTO (`$ref`), `DateTimeInterface` (`date-time`), массивы с типом элементов из `@param list<Item>` или `#[Field(items:)]` |
-| правило валидации | `Length` → `minLength`/`maxLength`, `Range` → `minimum`/`maximum`, `Count` → `minItems`/`maxItems`, `Pattern` → `pattern`, `Email` → `format: email`, `Url` → `format: uri`, `Choice` → `enum`, `NotBlank` → required |
+| правило валидации | `Length` → `minLength`/`maxLength`, `Range` → `minimum`/`maximum`, `Count` → `minItems`/`maxItems`, `Pattern`/`Alnum` → `pattern`, `Email` → `format: email`, `Url` → `format: uri`, `Uuid` → `format: uuid`, `Hostname` → `format: hostname`, `Ip(4)`/`Ip(6)` → `format: ipv4`/`ipv6`, `Date` → `format: date` или `date-time`, `Choice` → `enum`, `Unique` → `uniqueItems`, `Each` → правила элементов в `items`, `NotBlank` → required |
 | `#[Status(201)]` и тип возврата | успешный ответ: DTO → `$ref`, `list<Dto>` из `@return` → массив `$ref`, `string` → `text/html`, `void`/`null` → 204, `ResponseInterface` → без схемы |
 | возврат `Page` | конверт пагинации (`items`, `page`, `perPage`, `total`, `pages`) с типом элементов из `@return Page<Dto>` или `#[Response(type: Page::class, items: Dto::class)]` |
-| `#[Auth]` | `security` со схемой каждого настроенного аутентификатора, плюс 401 (и 403 при ролях) |
+| `#[Auth]`, `#[Can]` | `security` со схемой каждого настроенного аутентификатора, плюс 401 (и 403 при ролях или способности) |
 | `#[RateLimit]` | ответ 429 |
 | есть тело или параметры | ответ 400 со схемой `Problem` |
 

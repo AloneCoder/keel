@@ -68,6 +68,11 @@ One engine serves every request of a worker, so compiled templates stay loaded: 
 render on a worker compiles, the rest reuse. Keep template globals free of per-request data;
 pass the request's data as parameters.
 
+## Translations
+
+With a `Translator` registered ([Localization](i18n.md)) both providers add the `trans` filter
+and function and `locale()`: `{{ 'cart.items'|trans({count: 3}) }}`.
+
 ## Other engines
 
 Implement `ViewRenderer` over the engine of your choice and alias it in a provider:

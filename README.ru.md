@@ -19,6 +19,7 @@
 - [OpenAPI](docs/ru/openapi.md) · [English](docs/en/openapi.md)
 - [Здоровье и метрики](docs/ru/observability.md) · [English](docs/en/observability.md)
 - [База данных](docs/ru/database.md), [Шаблоны](docs/ru/views.md), [Кэш](docs/ru/cache.md), [HTTP-клиент](docs/ru/http-client.md) · [English](docs/en/database.md)
+- [Файловое хранилище](docs/ru/storage.md), [Локализация](docs/ru/i18n.md) · [English](docs/en/storage.md)
 - [Стабильность API](docs/ru/api.md) · [English](docs/en/api.md)
 
 Попробовать пример:
@@ -32,7 +33,7 @@ php examples/hello/bin/console keel:routes
 В консоли есть `keel:routes`, `keel:compile`, `keel:cache-clear`, `keel:debug:container`, `keel:doctor`,
 `keel:preload`, `keel:openapi`, `keel:serve` (встроенный сервер или worker mode FrankenPHP с
 `--watch`) и генераторы `keel:make:*` для контроллеров, команд, middleware, слушателей,
-проверок здоровья и аутентификаторов; см. [Приложение](docs/ru/app.md).
+проверок здоровья, аутентификаторов и политик; см. [Приложение](docs/ru/app.md).
 
 Требования: PHP >= 8.4.
 

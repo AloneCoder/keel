@@ -5,16 +5,21 @@ declare(strict_types=1);
 namespace Keel\Http;
 
 use Keel\Http\Attribute\FromBody;
+use Keel\Http\Attribute\FromCookie;
+use Keel\Http\Attribute\FromFile;
+use Keel\Http\Attribute\FromHeader;
 use Keel\Http\Attribute\FromQuery;
 use Keel\Http\Exception\BadRequestException;
 use Keel\Routing\Route;
 use Keel\Routing\RouteMatch;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\UploadedFileInterface;
 
 /**
  * Resolves the arguments of a route handler, in this order per parameter:
- * the request / RouteMatch / Route by type, #[FromQuery], #[FromBody], a path placeholder
+ * the request / RouteMatch / Route / Input by type, #[FromQuery], #[FromBody], #[FromHeader],
+ * #[FromCookie], #[FromFile], a path placeholder
  * with the parameter's name (type-cast), a request attribute keyed by the parameter's class
  * (what SessionMiddleware and auth middleware leave behind), a service from the container,
  * the default value.
@@ -32,6 +37,14 @@ final class ArgumentResolver
     private const int BODY = 4;
 
     private const int DYNAMIC = 5;
+
+    private const int INPUT = 6;
+
+    private const int HEADER = 7;
+
+    private const int COOKIE = 8;
+
+    private const int FILE = 9;
 
     /** @var array<string, list<array{0: int, 1: \ReflectionParameter, 2: string|null}>> per handler: source, parameter, class */
     private array $plans = [];
@@ -69,6 +82,10 @@ final class ArgumentResolver
                 self::ROUTE => $match->route,
                 self::QUERY => $this->fromQuery($parameter, $class, $request),
                 self::BODY => $this->fromBody($parameter, $class, $request),
+                self::INPUT => new Input($request, $match, $this->bodies(), $this->hydrator()),
+                self::HEADER => $this->fromHeader($parameter, $request),
+                self::COOKIE => $this->fromCookie($parameter, $request),
+                self::FILE => $this->fromFile($parameter, $request),
                 default => $this->argument($parameter, $class, $request, $match, $handler),
             };
         }
@@ -95,6 +112,14 @@ final class ArgumentResolver
                 $source = self::MATCH;
             } elseif ($class === Route::class) {
                 $source = self::ROUTE;
+            } elseif ($class === Input::class) {
+                $source = self::INPUT;
+            } elseif ($parameter->getAttributes(FromHeader::class) !== []) {
+                $source = self::HEADER;
+            } elseif ($parameter->getAttributes(FromCookie::class) !== []) {
+                $source = self::COOKIE;
+            } elseif ($parameter->getAttributes(FromFile::class) !== []) {
+                $source = self::FILE;
             } elseif ($parameter->getAttributes(FromQuery::class) !== []) {
                 $source = self::QUERY;
             } elseif ($parameter->getAttributes(FromBody::class) !== []) {
@@ -177,6 +202,77 @@ final class ArgumentResolver
         }
 
         throw new BadRequestException(sprintf('Missing query parameter "%s"', $name));
+    }
+
+    private function fromHeader(\ReflectionParameter $parameter, ServerRequestInterface $request): mixed
+    {
+        $name = $parameter->getAttributes(FromHeader::class)[0]->newInstance()->name;
+
+        return $this->scalarOrDefault($parameter, $request->hasHeader($name) ? $request->getHeaderLine($name) : null, $name, 'header');
+    }
+
+    private function fromCookie(\ReflectionParameter $parameter, ServerRequestInterface $request): mixed
+    {
+        $name = $parameter->getAttributes(FromCookie::class)[0]->newInstance()->name ?? $parameter->getName();
+        $value = $request->getCookieParams()[$name] ?? null;
+
+        return $this->scalarOrDefault($parameter, is_string($value) ? $value : null, $name, 'cookie');
+    }
+
+    /**
+     * One uploaded file (or, for an array parameter, every file of the field), validated by the
+     * parameter's rules; a failed upload is 400.
+     */
+    private function fromFile(\ReflectionParameter $parameter, ServerRequestInterface $request): mixed
+    {
+        $name = $parameter->getAttributes(FromFile::class)[0]->newInstance()->name ?? $parameter->getName();
+        $type = $parameter->getType();
+        $wantsList = $type instanceof \ReflectionNamedType && in_array($type->getName(), ['array', 'iterable'], true);
+        $field = $request->getUploadedFiles()[$name] ?? null;
+
+        $files = [];
+        foreach (is_array($field) ? $field : [$field] as $file) {
+            if ($file instanceof UploadedFileInterface) {
+                if ($file->getError() !== \UPLOAD_ERR_OK) {
+                    throw new BadRequestException('Invalid request data', [], [sprintf('%s: upload failed (error %d)', $name, $file->getError())]);
+                }
+                $this->hydrator()->check($file, $parameter, $name);
+                $files[] = $file;
+            }
+        }
+
+        if ($wantsList) {
+            return $files;
+        }
+        if ($files !== []) {
+            return $files[0];
+        }
+        if ($parameter->isDefaultValueAvailable()) {
+            return $parameter->getDefaultValue();
+        }
+        if ($parameter->allowsNull()) {
+            return null;
+        }
+
+        throw new BadRequestException(sprintf('Missing file "%s"', $name));
+    }
+
+    /**
+     * A header or cookie value cast to the parameter type; absent: the default, null when nullable, else 400.
+     */
+    private function scalarOrDefault(\ReflectionParameter $parameter, ?string $value, string $name, string $kind): mixed
+    {
+        if ($value !== null) {
+            return $this->hydrator()->cast($value, $parameter, $name);
+        }
+        if ($parameter->isDefaultValueAvailable()) {
+            return $parameter->getDefaultValue();
+        }
+        if ($parameter->allowsNull()) {
+            return null;
+        }
+
+        throw new BadRequestException(sprintf('Missing %s "%s"', $kind, $name));
     }
 
     private function fromBody(\ReflectionParameter $parameter, ?string $class, ServerRequestInterface $request): mixed

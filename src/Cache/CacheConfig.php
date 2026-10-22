@@ -10,15 +10,18 @@ namespace Keel\Cache;
 final readonly class CacheConfig
 {
     /**
-     * @param string      $driver     "auto" (APCu when loaded, else file), "apcu", "file" or "array"
-     * @param string|null $directory  file driver: where entries live; default var/cache/keel-cache under the system temp dir
-     * @param string      $prefix     key prefix, keeps several applications apart in one APCu
-     * @param int|null    $defaultTtl seconds for set() without a TTL; null = forever
+     * @param string       $driver     "auto" (APCu when loaded, else file), "apcu", "file", "array", "redis" (needs
+     *                                 RedisProvider) or "memcached" (ext-memcached)
+     * @param string|null  $directory  file driver: where entries live; default var/cache/keel-cache under the system temp dir
+     * @param string       $prefix     key prefix, keeps several applications apart in one APCu, Redis or Memcached
+     * @param int|null     $defaultTtl seconds for set() without a TTL; null = forever
+     * @param list<string> $servers    memcached driver: "host:port" entries
      */
     public function __construct(
         public string $driver = 'auto',
         public ?string $directory = null,
         public string $prefix = 'keel:',
         public ?int $defaultTtl = null,
+        public array $servers = ['127.0.0.1:11211'],
     ) {}
 }

@@ -123,25 +123,35 @@ object is created by the container on the first event, so it can have dependenci
 Unless the application registers a `Psr\Log\LoggerInterface`, `App::boot()` wires
 `Keel\Log\StreamLogger`: dependency-free PSR-3, one JSON line per record to `php://stderr`
 (collected by FrankenPHP, RoadRunner and Docker). Settings come from `LoggerConfig` in
-`config/logger.php`: stream, minimum level, channel, JSON or text. Exceptions in the context
-become class, message and location; `{placeholders}` are interpolated from the context.
-
-Monolog plugs in through a provider:
+`config/logger.php`. Exceptions in the context become class, message and location;
+`{placeholders}` are interpolated from the context.
 
 ```php
-final class LogProvider implements ServiceProvider
-{
-    public function register(Definitions $d): void
-    {
-        $d->set(Logger::class)->factory([self::class, 'monolog'])->alias(LoggerInterface::class);
-    }
-
-    public static function monolog(LoggerConfig $config): Logger
-    {
-        return new Logger($config->channel)->pushHandler(new StreamHandler($config->stream));
-    }
-}
+// config/logger.php
+return static fn(string $projectDir): LoggerConfig => new LoggerConfig(
+    stream: 'php://stderr', level: 'debug', channel: 'app', json: true,   // the default channel
+    channels: [
+        'audit' => new ChannelConfig(stream: $projectDir . '/var/log/audit.log', level: 'info', rotate: 'daily'),
+        'security' => new ChannelConfig(syslog: 'myapp'),                 // the local syslog under this ident
+    ],
+);
 ```
+
+- **Channels.** `Loggers::channel('audit')` is the PSR-3 logger of a named channel; each
+  `ChannelConfig` overrides the defaults it sets (stream, level, JSON or text, rotation,
+  syslog). The default channel is the container's `LoggerInterface`.
+- **Rotation.** `rotate: 'daily'` turns a file stream `var/log/app.log` into
+  `var/log/app-2026-10-22.log`, reopened when the date changes; delete old files yourself.
+- **Request context.** `LogContextMiddleware`, listed in `HttpConfig` after
+  `RequestIdMiddleware`, `TrustedProxiesMiddleware` and `AuthMiddleware`, fills `LogContext`
+  with `request_id`, `method`, `path`, `client_ip` and `principal`; every record of the request
+  carries them (a record's own context wins). `LogContext::set()` adds your own (`tenant`); the
+  container resets it between requests. `context: false` in the config turns the merge off.
+- **Monolog.** Load `MonologProvider` (`composer require monolog/monolog`) and the same config
+  drives Monolog: one `Monolog\Logger` per channel with a `StreamHandler`, `RotatingFileHandler`
+  or `SyslogHandler`, `JsonFormatter` or `LineFormatter`, the request context in `extra`;
+  `LoggerInterface` and `Loggers` resolve to Monolog loggers. Any other PSR-3 logger still plugs
+  in by aliasing `LoggerInterface` in a provider.
 
 ## Console
 
@@ -162,7 +172,8 @@ final class LogProvider implements ServiceProvider
   checks out when they would reach a database;
 - `keel:make:controller`, `keel:make:command`, `keel:make:middleware`, `keel:make:listener`,
   `keel:make:check` (a tagged health check), `keel:make:authenticator` (a `PrincipalResolver`, or
-  with `--scheme` a full `Authenticator`): class generators in the project namespace (from
+  with `--scheme` a full `Authenticator`), `keel:make:policy Post [abilities...]` (a tagged
+  `Policy` for the `Gate`): class generators in the project namespace (from
   `composer.json`), never overwriting without `--force`;
 - `keel:preload`: write `var/cache/<env>/preload.php` for `opcache.preload`: every file the
   application loads to boot and answer a request, in load order. With preloading those classes

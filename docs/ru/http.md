@@ -30,24 +30,58 @@ $kernel->terminate();                     // после отправки отв�
 `Pipeline` — PSR-15 обработчик: middleware выполняются в порядке объявления (FIFO), классы
 резолвятся из контейнера на каждом запросе, так что временем их жизни управляет контейнер:
 shared-сервис — один экземпляр на весь воркер (реализуйте `Resettable`, чтобы сбрасывать
-состояние запроса), transient — новый экземпляр на каждый запрос. Экземпляр конвейера не
-хранит состояние запроса и переиспользуется между запросами.
+состояние запроса), transient — новый экземпляр на каждый запрос. Пару `[класс, аргументы]`
+(её записывает `#[MiddlewareWith]`, она же допустима в `HttpConfig`) конвейер собирает один раз:
+именованные аргументы в конструктор, остальное автовайрится. Экземпляр конвейера не хранит
+состояние запроса и переиспользуется между запросами.
 
 ## Аргументы хэндлера
 
 `ArgumentResolver` заполняет параметры метода контроллера, для каждого параметра в этом порядке:
 
-1. тип `ServerRequestInterface`, `RouteMatch` или `Route` — сам запрос или результат роутинга;
+1. тип `ServerRequestInterface`, `RouteMatch`, `Route` или `Input` — сам запрос, результат
+   роутинга или [читатель запроса](#input);
 2. `#[FromQuery]` — DTO гидратируется из всех query-параметров; скаляр читается из параметра
    с именем аргумента (отсутствие без дефолта — 400);
 3. `#[FromBody]` — JSON (`application/json`, `*+json`) или `getParsedBody()`; DTO
    гидратируется, `array` получает тело как есть; битый JSON — 400. На скалярном параметре
    (`string`, `int`, ...) атрибут — ошибка конфигурации: `LogicException` на первом запросе;
+   `#[FromHeader('X-Request-Id')]` и `#[FromCookie]` (cookie с именем параметра или
+   `#[FromCookie('theme')]`) заполняют скаляр так же: приведение к типу (400 при
+   несоответствии), дефолт или `null` при отсутствии, иначе 400; `#[FromFile]` привязывает
+   загрузку, см. [Файловое хранилище](storage.md#загрузки);
 4. плейсхолдер маршрута с именем параметра, приведённый к типу (`int`, `float`, `bool`,
    `string`, enum); несоответствие — 400;
 5. сервис из контейнера по типу (`has()`);
 6. значение по умолчанию или `null` для nullable;
 7. иначе `LogicException` (это ошибка конфигурации, ответ 500).
+
+## Input
+
+`Keel\Http\Input`, внедряемый по типу, — удобное чтение PSR-7-запроса для одиночных параметров
+и для middleware; DTO с `#[FromQuery]` и `#[FromBody]` остаются типизированным входом.
+
+```php
+#[Post('/search')]
+public function search(Input $input): array
+{
+    $q = $input->string('q', '');             // query и тело слиты, тело побеждает
+    $page = $input->int('page', 1);           // приведение как в гидраторе; "abc" — 400
+    $city = $input->get('address.city');      // пути через точку во вложенные данные
+    $tags = $input->array('tags', []);
+    $token = $input->bearerToken();
+    $ip = $input->ip();                       // из TrustedProxiesMiddleware, иначе REMOTE_ADDR
+    // ...
+}
+```
+
+`all()`, `get($key, $default)`, `has()`, `filled()` (не null, "" и []), `only()`, `except()`,
+`query()`, `string()`/`int()`/`float()`/`bool()`/`array()` с дефолтом для отсутствующего ключа,
+`param($name)` (плейсхолдер маршрута), `header()`, `cookie()`, `file()`/`files()` (загрузки),
+`bearerToken()`, `ip()`, `method()`, `path()`, `isSecure()`, `isJson()` (JSON-тело),
+`wantsJson()` (JSON первым в `Accept` или JSON-тело без `Accept`), `isAjax()` и `request()` для
+всего остального. Тело читается при первом обращении и только для методов кроме GET и HEAD;
+битый JSON — 400.
 
 ## Гидратор
 
@@ -101,6 +135,7 @@ public function list(#[FromQuery] PageRequest $page): Page
 | `ResponseInterface` | как есть (статус заменяется, если задан `#[Status]`) |
 | `null` | 204 без тела |
 | `string` | `text/html; charset=utf-8` |
+| `Keel\Http\Redirect` | 3xx с `Location`: `Redirect::to('/login')`, `Redirect::route('users.show', ['id' => 5], 303)`, см. [Роутинг](routing.md#редиректы) |
 | массив, `JsonSerializable`, объект | `application/json`, флаги `JSON_UNESCAPED_UNICODE`, `JSON_UNESCAPED_SLASHES`, `JSON_PRESERVE_ZERO_FRACTION` |
 
 ## Ошибки: RFC 9457 Problem Details
@@ -148,8 +183,11 @@ final readonly class SignUp
 }
 ```
 
-Правила: `NotBlank`, `Length`, `Range`, `Count`, `Pattern`, `Email`, `Url`, `Choice`. Правило
-применяется только к переданным полям; `null` проверяет лишь `NotBlank`; при ошибке типа правила
+Правила: `NotBlank`, `Length`, `Range`, `Count`, `Pattern`, `Alnum(allow: '-_')`, `Email`, `Url`,
+`Uuid`, `Ip(version: 4|6)`, `Hostname`, `Date(format: 'Y-m-d')`, `Json`, `Timezone`, `Choice`,
+`Unique` (без повторяющихся элементов) и `Each(new NotBlank(), new Length(max: 30))`, которое
+прогоняет свои правила по каждому элементу массива и сообщает о первом неподходящем как
+`tags: [2]: must not be blank`. Правило применяется только к переданным полям; `null` проверяет лишь `NotBlank`; при ошибке типа правила
 поля не запускаются. Своё правило — класс-атрибут, реализующий `Keel\Validation\Rule::check()`.
 
 ## Встроенные middleware
@@ -161,6 +199,8 @@ final readonly class SignUp
 | `CorsMiddleware` | `CorsConfig` | отвечает на preflight (204) без роутера, добавляет `Access-Control-*`; origin точный, `*` или шаблон `https://*.example.com`; `allowCredentials` требует явного списка origin (`*` отклоняется в конструкторе) |
 | `RequestIdMiddleware` | — | берёт корректный `X-Request-Id` или генерирует; атрибут `request_id` и заголовок ответа |
 | `TrustedProxiesMiddleware` | `TrustedProxiesConfig` | применяет `X-Forwarded-For/Proto/Host/Port` только от доверенных CIDR; IP клиента в атрибуте `client_ip` |
+| `HttpCacheMiddleware` | `HttpCacheConfig` | `Cache-Control` и `ETag` для ответов 200 на GET/HEAD, 304 по `If-None-Match` / `If-Modified-Since`; см. ниже |
+| `CsrfMiddleware` | `CsrfConfig` | synchronizer-токен поверх сессии, см. [Сессии](session.md#защита-от-csrf) |
 
 `TrustedProxiesMiddleware` берёт самый правый адрес `X-Forwarded-For`, который сам не является
 доверенным прокси. Если доверены все (как при `proxies: ['*']`), берётся самый правый валидный
@@ -172,6 +212,36 @@ final readonly class SignUp
 | `HealthMiddleware` | `HealthConfig` | `/health` и `/health/live`, см. [Здоровье и метрики](observability.md) |
 | `MetricsMiddleware` | `MetricsConfig` | метрики Prometheus и `/metrics` |
 | `OpenApiMiddleware` | `OpenApiConfig` | `/openapi.json` и `/docs`, см. [OpenAPI](openapi.md) |
+
+### HTTP-кэширование
+
+`HttpCacheMiddleware` работает с ответами 200 на GET и HEAD. Он добавляет настроенный
+`Cache-Control`, если хэндлер его не задал, `ETag` — хэш тела, если хэндлер не задал свой
+(`etag: false` отключает), и отвечает пустым 304 с сохранением валидаторов и кэш-заголовков на
+запрос, чей `If-None-Match` совпал с ETag (слабое сравнение, списки и `*` понимаются) или чей
+`If-Modified-Since` не старше `Last-Modified` ответа. Хэндлер при этом выполняется: экономится
+передача, а не работа.
+
+```php
+// config/http_cache.php: умолчания для глобального middleware
+return new HttpCacheConfig(etag: true);
+
+// на маршрут или контроллер
+#[Get('/catalog')]
+#[CacheControl(maxAge: 300, public: true)]            // public, max-age=300 + ETag
+public function catalog(): array { /* ... */ }
+
+#[Get('/me')]
+#[CacheControl(noStore: true)]                        // no-store, без ETag
+public function me(Principal $user): array { /* ... */ }
+```
+
+`#[CacheControl(maxAge, sharedMaxAge, public, mustRevalidate, immutable, noStore, etag)]`
+добавляет middleware к маршруту со своими настройками: работает и без глобального middleware,
+а при обоих сразу перекрывает `HttpCacheConfig`. Глобальный middleware выполняется до роутинга
+и видит только конфиг; настройки на маршрут даёт именно атрибут. Хэширование читает всё тело,
+поэтому для больших выгрузок и потоков отключайте `etag` (неперематываемое тело пропускается
+и так).
 
 ## Прочее
 

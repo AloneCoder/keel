@@ -105,6 +105,58 @@ rejects invalid credentials everywhere, not only on protected routes.
 `Authentication` is the service behind both: `authenticate($request)` runs the configured
 authenticators, `principal($request)` reads the attribute, `unauthorized()` builds the 401.
 
+## Policies
+
+Roles answer "who are you"; policies answer "may you do this to that". A policy is a tagged
+service deciding named abilities for a principal and a subject:
+
+```php
+#[Tag(Policy::TAG)]
+final class PostPolicy implements Policy
+{
+    public function abilities(): array
+    {
+        return ['post.view', 'post.update', 'post.delete'];
+    }
+
+    public function allows(Principal $principal, string $ability, mixed $subject): bool
+    {
+        return match ($ability) {
+            'post.view' => true,
+            'post.update' => $subject instanceof Post && $subject->authorId === $principal->id(),
+            'post.delete' => $principal->hasRole('admin'),
+            default => false,
+        };
+    }
+}
+```
+
+`keel:make:policy Post post.update post.delete` generates one. Discovery registers it through
+the tag; `Gate` collects every tagged policy and asks the one declaring the ability:
+`allows($user, 'post.update', $post)`, `denies(...)`, `authorize(...)` (throws 403
+`ForbiddenException` on refusal) and `abilities()`. An ability no policy declares is a
+`LogicException`, a configuration error rather than a silent denial; two policies declaring the
+same ability are rejected when the gate is built.
+
+In a handler, inject the `Gate` and the principal and check once the entity is loaded:
+
+```php
+#[Patch('/posts/{id}')]
+#[Auth]
+public function update(int $id, Principal $user, Gate $gate, #[FromBody] UpdatePost $cmd): PostDto
+{
+    $post = $this->posts->get($id);
+    $gate->authorize($user, 'post.update', $post);
+    // ...
+}
+```
+
+For a decision the route parameters suffice for, `#[Can('post.update')]` on the method or the
+class adds `PolicyGuard`: it authenticates like `AuthGuard` (401 without a principal) and asks
+the gate with the route parameters as the subject (`['id' => '42']`), answering 403 on refusal.
+`keel:routes` shows the ability in the Auth column; the OpenAPI document gets `security` plus 401
+and 403, as with roles.
+
 ## Rate limiting
 
 `#[RateLimit(limit, window, by)]` allows `limit` requests per `window` seconds (60 by default)
@@ -132,8 +184,9 @@ a request with credentials is always counted per principal, invalid credentials 
 only a truly anonymous request falls back to the IP.
 
 Counters live in a `CounterStorage`: APCu when the extension is loaded (shared by every worker of
-the server), otherwise the memory of the current process. Register your own implementation
-under `CounterStorage` for Redis or a database; `InMemoryCounters` suits tests. `ApcuCounters`
+the server), otherwise the memory of the current process. `RedisCounters` puts them on Redis
+for the whole fleet (`RedisConfig(use: ['counters'])`, see [Cache](cache.md#redis)); register
+your own implementation under `CounterStorage` for anything else; `InMemoryCounters` suits tests. `ApcuCounters`
 fails closed: when APCu cannot store a counter (shared memory exhausted) the limit reads as
 exceeded rather than silently disabled, so size `apc.shm_size` for your key count.
 

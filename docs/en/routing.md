@@ -28,9 +28,18 @@ final class UserController
 - `#[Get]`, `#[Post]`, `#[Put]`, `#[Patch]`, `#[Delete]` are shortcuts for `#[Route]` with one
   method. The attributes are repeatable: one method can serve several paths.
 - `#[Prefix]` on the class is prepended to every path in the class. An empty method path `''`
-  or `'/'` yields exactly the prefix (`/api`, not `/api/`).
+  or `'/'` yields exactly the prefix (`/api`, not `/api/`). A prefix on a parent class comes
+  first: parent classes are route groups, see below.
 - `#[Middleware]` on the class applies to every route of the class and runs before the
   method-level middleware.
+- `#[MiddlewareWith(Throttle::class, limit: 5, window: 60)]` adds one middleware built with
+  constructor arguments, for middleware without an attribute of its own (third-party or
+  generic). Named arguments go to the parameters of that name, the rest are autowired; the
+  instance is built once per route and kept, so it must hold no request state. Values travel
+  through the route cache, so they must be exportable. The same pair form, `[Throttle::class,
+  ['limit' => 5]]`, works in the global middleware list of `HttpConfig`.
+- `#[Redirect('/old', '/new', 308)]` on the class declares a route that only redirects; see
+  [Redirects](#redirects).
 - `#[Status]` sets the status of the response that `Responder` builds from the return value.
 - A handler is a public non-static method. Closures are not supported: they cannot be compiled
   into the cache.
@@ -56,7 +65,59 @@ reads them from the `RouteMatch` request attribute.
   For non-ASCII values keep the default `[^/]+` and validate the decoded value in the handler.
 - A path starts with `/`. The trailing slash is part of the path: `/users` and `/users/` are
   different routes.
-- There are no optional segments: declare two routes on the same method.
+- `[...]` at the end of the path marks optional segments, nested if needed:
+  `/users[/{id:\d+}[/{tab}]]` serves `/users`, `/users/5` and `/users/5/posts`. A method path
+  that is entirely optional (`#[Get('[/{path:.+}]')]`) attaches to the class prefix. A short
+  match leaves its placeholders out of the parameters, so the handler argument takes its
+  default (`?int $id = null`, `string $tab = 'profile'`); a parameter without a default is a
+  configuration error. Brackets are only allowed at the end: `/a[/b]/c` and `/a[/b][/c]` are
+  rejected. A `[` inside a constraint (`{slug:[a-z]+}`) is a character class, not a marker.
+
+## Groups
+
+A controller's parent classes act as route groups. `#[Prefix]`, `#[Middleware]` and every
+`RouteOption` attribute (`#[Auth]`, `#[RateLimit]`, `#[CacheControl]`, ...) declared on a
+parent apply to the subclass: prefixes are joined root-first, parent middleware runs first,
+and an option declared again on the subclass or the method overrides the parent's.
+
+```php
+#[Prefix('/api/v1')]
+#[Middleware(ApiKeyMiddleware::class)]
+#[Auth]
+abstract class ApiController {}
+
+#[Prefix('/users')]                      // routes start with /api/v1/users
+final class UserController extends ApiController
+{
+    #[Get('/{id}')]
+    public function show(int $id): UserDto { /* ... */ }
+}
+```
+
+The abstract parent is not a controller itself (discovery skips classes that cannot be
+instantiated), so nothing is declared twice. Nest as deep as you like.
+
+## Redirects
+
+```php
+#[Prefix('/api')]
+#[Redirect('/v1/users/{id}', '/api/v2/users/{id}', 308, name: 'users.v1')]   // /api/v1/users/{id}
+#[Redirect('/docs', 'https://docs.example.com/', methods: ['GET', 'POST'])]
+final class UserController { /* ... */ }
+```
+
+`#[Redirect(from, to, status, methods, name)]` is repeatable on a controller class and needs
+no method: the route is served by `Keel\Routing\Redirector`, which answers with the status
+(302 by default; 301, 303, 307 or 308) and a `Location` built from `to`. The class prefix and
+class middleware apply to `from` as to any route; `to` is used as written, a path or an
+absolute http(s) URL, and may repeat the placeholders of `from`, whose matched values are
+substituted percent-encoded. Redirect routes appear in `keel:routes` and are left out of the
+OpenAPI document.
+
+From a handler, return `Keel\Http\Redirect`: `Redirect::to('/login')`,
+`Redirect::to('/done', 303)` or `Redirect::route('users.show', ['id' => 5])`, which the
+`Responder` turns into the response (the named form needs the `Router`, which the kernel
+injects). `Responder::redirect($location, $status)` builds the same response directly.
 
 ## Matching
 
@@ -96,7 +157,9 @@ $router->generate('users.show', ['id' => 5, 'page' => 2]);      // /api/users/5?
 ```
 
 Extra parameters become the query string, `null` values are skipped, values are encoded with
-`rawurlencode`. Each value is checked against its placeholder constraint, either as given (with
+`rawurlencode`. With optional segments the longest variant whose placeholders are all given
+(and not `null`) is generated: `generate('users')` is `/users`, `generate('users', ['id' => 5])`
+is `/users/5`. Each value is checked against its placeholder constraint, either as given (with
 `/u`, so `{slug:[\p{L}-]+}` accepts `wörld`) or in its encoded form (`a/b` satisfies `[^/]+` as
 `a%2Fb`, exactly as the matcher will see it). A missing parameter, a pattern violation and an
 unknown name raise `RoutingException`.
@@ -107,4 +170,5 @@ unknown name raise `RoutingException`.
 a placeholder name used twice, an invalid pattern or one with a capturing group that cannot be
 neutralised, a route name declared twice, a static path or a dynamic pattern declared twice for
 the same method (`/u/{id}` and `/u/{slug}` compile to the same regex), a static or abstract
-handler.
+handler, optional segments that are not at the end of the path, a `#[Redirect]` with a
+non-3xx status or a target that is neither a path nor an http(s) URL.

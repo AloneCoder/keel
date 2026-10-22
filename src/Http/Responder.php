@@ -4,21 +4,27 @@ declare(strict_types=1);
 
 namespace Keel\Http;
 
+use Keel\Routing\Router;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 
 /**
  * Turns a handler's return value into a PSR-7 response:
- * ResponseInterface as is; null => 204; string => text/html; anything else => JSON.
+ * ResponseInterface as is; null => 204; string => text/html; Redirect => 3xx with Location;
+ * anything else => JSON.
  */
 final class Responder
 {
     public const int JSON_FLAGS = \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES | \JSON_PRESERVE_ZERO_FRACTION;
 
+    /**
+     * @param Router|null $router resolves Redirect::route(); without it only Redirect::to() works
+     */
     public function __construct(
         private readonly ResponseFactoryInterface $responses,
         private readonly StreamFactoryInterface $streams,
+        private readonly ?Router $router = null,
     ) {}
 
     public function respond(mixed $result, ?int $status = null): ResponseInterface
@@ -35,6 +41,12 @@ final class Responder
             return $this->text($result, $status ?? 200, 'text/html; charset=utf-8');
         }
 
+        if ($result instanceof Redirect) {
+            $location = $result->location ?? $this->generate($result);
+
+            return $this->redirect($location, $status ?? $result->status);
+        }
+
         return $this->json($result, $status ?? 200);
     }
 
@@ -48,5 +60,27 @@ final class Responder
         return $this->responses->createResponse($status)
             ->withHeader('Content-Type', $contentType)
             ->withBody($this->streams->createStream($body));
+    }
+
+    /**
+     * An empty response with a Location header. A CR or LF in the location is refused by PSR-7;
+     * validate user-supplied targets before redirecting to them.
+     */
+    public function redirect(string $location, int $status = 302): ResponseInterface
+    {
+        if ($status < 300 || $status > 399) {
+            throw new \InvalidArgumentException(sprintf('A redirect needs a 3xx status, got %d', $status));
+        }
+
+        return $this->responses->createResponse($status)->withHeader('Location', $location);
+    }
+
+    private function generate(Redirect $redirect): string
+    {
+        if ($this->router === null) {
+            throw new \LogicException(sprintf('Redirect::route("%s") needs a Router in the Responder; none is registered', (string) $redirect->routeName));
+        }
+
+        return $this->router->generate((string) $redirect->routeName, $redirect->params);
     }
 }

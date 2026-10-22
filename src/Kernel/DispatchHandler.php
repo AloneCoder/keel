@@ -25,7 +25,7 @@ final class DispatchHandler implements RequestHandlerInterface
     /** @var array<string, \ReflectionMethod> */
     private array $methods = [];
 
-    /** @var array<string, RequestHandlerInterface> route middleware pipelines, built once per handler + middleware list */
+    /** @var array<int, RequestHandlerInterface> route middleware pipelines, one per Route object */
     private array $pipelines = [];
 
     public function __construct(
@@ -41,7 +41,8 @@ final class DispatchHandler implements RequestHandlerInterface
             return $this->invoke($request, $match);
         }
 
-        $key = implode('::', $match->route->handler) . '|' . implode(',', $match->route->middleware);
+        // Route objects are materialized once per worker (CompiledRoutes), so their identity is a stable key.
+        $key = spl_object_id($match->route);
 
         return ($this->pipelines[$key] ??= new Pipeline(
             $match->route->middleware,

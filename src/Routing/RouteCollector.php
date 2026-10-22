@@ -6,13 +6,18 @@ namespace Keel\Routing;
 
 use Keel\Routing\Attribute\MiddlewareProvider;
 use Keel\Routing\Attribute\Prefix;
+use Keel\Routing\Attribute\Redirect as RedirectAttribute;
 use Keel\Routing\Attribute\Route as RouteAttribute;
 use Keel\Routing\Attribute\RouteOption;
 use Keel\Routing\Attribute\Status;
 use Keel\Routing\Exception\RoutingException;
 
 /**
- * Reads route attributes from controller classes and collects Route objects.
+ * Reads route attributes from controller classes and collects Route objects. A controller's
+ * parent classes act as route groups: #[Prefix], #[Middleware] and RouteOption attributes on
+ * an (abstract) parent apply to every subclass.
+ *
+ * @phpstan-import-type MiddlewareEntry from MiddlewareProvider
  */
 final class RouteCollector
 {
@@ -41,10 +46,32 @@ final class RouteCollector
         }
 
         $reflection = new \ReflectionClass($class);
-        $prefix = $reflection->getAttributes(Prefix::class);
-        $prefixPath = $prefix === [] ? '' : rtrim($prefix[0]->newInstance()->path, '/');
-        $classMiddleware = self::middlewareOf($reflection);
-        $classOptions = self::optionsOf($reflection);
+        // Parent classes form the route groups: their prefixes are joined root-first, their
+        // middleware runs first, their options are overridden by the subclass.
+        $prefixPath = '';
+        $classMiddleware = [];
+        $classOptions = [];
+        foreach (self::lineage($reflection) as $ancestor) {
+            $prefix = $ancestor->getAttributes(Prefix::class);
+            if ($prefix !== []) {
+                $prefixPath = self::joinPrefix($prefixPath, $prefix[0]->newInstance()->path);
+            }
+            $classMiddleware = self::mergeMiddleware($classMiddleware, self::middlewareOf($ancestor));
+            $classOptions = self::optionsOf($ancestor) + $classOptions;
+        }
+
+        foreach ($reflection->getAttributes(RedirectAttribute::class) as $attribute) {
+            $redirect = $attribute->newInstance();
+            $this->add(new Route(
+                self::joinPath($prefixPath, $redirect->from),
+                $redirect->methods,
+                [Redirector::class, 'redirect'],
+                $redirect->name,
+                $classMiddleware,
+                null,
+                [RedirectAttribute::KEY => $redirect->value()] + $classOptions,
+            ));
+        }
 
         foreach ($reflection->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
             $attributes = $method->getAttributes(RouteAttribute::class, \ReflectionAttribute::IS_INSTANCEOF);
@@ -57,7 +84,7 @@ final class RouteCollector
             }
 
             $status = $method->getAttributes(Status::class);
-            $middleware = array_values(array_unique([...$classMiddleware, ...self::middlewareOf($method)]));
+            $middleware = self::mergeMiddleware($classMiddleware, self::middlewareOf($method));
             $options = self::optionsOf($method) + $classOptions;
             foreach ($attributes as $attribute) {
                 $route = $attribute->newInstance();
@@ -100,20 +127,41 @@ final class RouteCollector
     /**
      * @param \ReflectionClass<object>|\ReflectionMethod $owner
      *
-     * @return list<class-string<\Psr\Http\Server\MiddlewareInterface>>
+     * @return list<MiddlewareEntry>
      */
     private static function middlewareOf(\ReflectionClass|\ReflectionMethod $owner): array
     {
-        $classes = [];
+        $entries = [];
         foreach ($owner->getAttributes(MiddlewareProvider::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
-            foreach ($attribute->newInstance()->middleware() as $class) {
-                if (!in_array($class, $classes, true)) {
-                    $classes[] = $class;
+            $entries = self::mergeMiddleware($entries, $attribute->newInstance()->middleware());
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Concatenates middleware lists keeping the first occurrence of an entry: a class once, a
+     * [class, arguments] pair once per distinct argument set.
+     *
+     * @param list<MiddlewareEntry> ...$lists
+     *
+     * @return list<MiddlewareEntry>
+     */
+    private static function mergeMiddleware(array ...$lists): array
+    {
+        $merged = [];
+        $seen = [];
+        foreach ($lists as $list) {
+            foreach ($list as $entry) {
+                $key = is_string($entry) ? $entry : $entry[0] . '|' . serialize($entry[1]);
+                if (!isset($seen[$key])) {
+                    $seen[$key] = true;
+                    $merged[] = $entry;
                 }
             }
         }
 
-        return $classes;
+        return $merged;
     }
 
     /**
@@ -133,13 +181,42 @@ final class RouteCollector
     }
 
     /**
+     * The class and its parents, root first.
+     *
+     * @param \ReflectionClass<object> $class
+     *
+     * @return list<\ReflectionClass<object>>
+     */
+    private static function lineage(\ReflectionClass $class): array
+    {
+        $chain = [];
+        for ($current = $class; $current !== false; $current = $current->getParentClass()) {
+            array_unshift($chain, $current);
+        }
+
+        return $chain;
+    }
+
+    /**
+     * "/api" + "/v1/" => "/api/v1": a parent prefix and a subclass prefix joined without a double
+     * or trailing slash; a prefix of "/" or "" adds nothing.
+     */
+    private static function joinPrefix(string $outer, string $inner): string
+    {
+        $inner = trim($inner, '/');
+
+        return $inner === '' ? $outer : $outer . '/' . $inner;
+    }
+
+    /**
      * "/api" + "/{id}" => "/api/{id}"; "" or "/" as the method path yields exactly the prefix
      * ("/api", not "/api/"): a trailing slash is significant, so it is never added by accident.
+     * A method path that is entirely optional ("[/{id}]") attaches to the prefix as is.
      */
     private static function joinPath(string $prefix, string $path): string
     {
         $suffix = ltrim($path, '/');
-        $joined = $prefix . ($suffix === '' ? '' : '/' . $suffix);
+        $joined = $prefix . ($suffix === '' ? '' : (str_starts_with($suffix, '[') ? $suffix : '/' . $suffix));
 
         return $joined === '' ? '/' : $joined;
     }

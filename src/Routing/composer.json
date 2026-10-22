@@ -6,6 +6,7 @@
     "homepage": "https://github.com/AloneCoder/keel",
     "require": {
         "php": ">=8.4",
+        "psr/http-factory": "^1.1",
         "psr/http-server-middleware": "^1.0"
     },
     "autoload": {

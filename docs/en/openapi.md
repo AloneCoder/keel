@@ -35,15 +35,15 @@ to a copy you host.
 
 | Source | In the document |
 |---|---|
-| route path `/users/{id:\d+}` | path `/users/{id}`, a required path parameter typed from the handler argument, `pattern` from the constraint |
+| route path `/users/{id:\d+}` | path `/users/{id}`, a required path parameter typed from the handler argument, `pattern` from the constraint; optional segments (`/users[/{id}]`) give one path per variant, each with its own parameters; `#[Redirect]` routes are left out |
 | `#[FromQuery] Filter $f` | one query parameter per constructor parameter of the DTO; required when no default and not nullable |
 | `#[FromQuery] int $page = 1` | one query parameter |
 | `#[FromBody] CreateUser $c` | `requestBody` with a `$ref` to the `CreateUser` component schema |
 | DTO constructor parameter | property typed from the signature: scalars, nullable (`type: [string, null]`), unions (`oneOf`), backed and unit enums (`enum`), nested DTOs (`$ref`), `DateTimeInterface` (`date-time`), arrays with element types from `@param list<Item>` or `#[Field(items:)]` |
-| validation rule | `Length` → `minLength`/`maxLength`, `Range` → `minimum`/`maximum`, `Count` → `minItems`/`maxItems`, `Pattern` → `pattern`, `Email` → `format: email`, `Url` → `format: uri`, `Choice` → `enum`, `NotBlank` → required |
+| validation rule | `Length` → `minLength`/`maxLength`, `Range` → `minimum`/`maximum`, `Count` → `minItems`/`maxItems`, `Pattern`/`Alnum` → `pattern`, `Email` → `format: email`, `Url` → `format: uri`, `Uuid` → `format: uuid`, `Hostname` → `format: hostname`, `Ip(4)`/`Ip(6)` → `format: ipv4`/`ipv6`, `Date` → `format: date` or `date-time`, `Choice` → `enum`, `Unique` → `uniqueItems`, `Each` → the item rules under `items`, `NotBlank` → required |
 | `#[Status(201)]` and the return type | the success response: a DTO → `$ref`, `list<Dto>` from `@return` → array of `$ref`, `string` → `text/html`, `void`/`null` → 204, `ResponseInterface` → no schema |
 | `Page` return type | the pagination envelope (`items`, `page`, `perPage`, `total`, `pages`) with the element type from `@return Page<Dto>` or `#[Response(type: Page::class, items: Dto::class)]` |
-| `#[Auth]` | `security` with every configured authenticator's scheme, plus 401 (and 403 with roles) |
+| `#[Auth]`, `#[Can]` | `security` with every configured authenticator's scheme, plus 401 (and 403 with roles or an ability) |
 | `#[RateLimit]` | a 429 response |
 | body or parameters present | a 400 response with the `Problem` schema |
 

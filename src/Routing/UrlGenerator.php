@@ -26,9 +26,9 @@ final class UrlGenerator
         $index = $this->routes->names[$name]
             ?? throw new RoutingException(sprintf('Route "%s" is not defined', $name));
         $route = $this->routes->route($index);
-        $parsed = $this->parser->parse($route->path);
+        $path = $this->variantFor($route->path, $params);
+        $parsed = $this->parser->parse($path);
 
-        $path = $route->path;
         foreach ($parsed['variables'] as $position => $variable) {
             if (!array_key_exists($variable, $params)) {
                 throw new RoutingException(sprintf('Route "%s" needs parameter "%s"', $name, $variable));
@@ -56,5 +56,28 @@ final class UrlGenerator
         $query = array_filter($params, static fn(mixed $value): bool => $value !== null);
 
         return $query === [] ? $path : $path . '?' . http_build_query($query, '', '&', \PHP_QUERY_RFC3986);
+    }
+
+    /**
+     * With optional segments, the longest variant whose placeholders are all given (and not null);
+     * when even the shortest cannot be satisfied it is returned so that generate() names the
+     * missing parameter.
+     *
+     * @param array<string, scalar|\Stringable|null> $params
+     */
+    private function variantFor(string $path, array $params): string
+    {
+        $variants = $this->parser->expand($path);
+        foreach (array_reverse($variants) as $variant) {
+            foreach ($this->parser->parse($variant)['variables'] as $variable) {
+                if (($params[$variable] ?? null) === null) {
+                    continue 2;
+                }
+            }
+
+            return $variant;
+        }
+
+        return $variants[0];
     }
 }

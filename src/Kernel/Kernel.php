@@ -10,6 +10,7 @@ use Keel\Container\Definitions;
 use Keel\Http\ArgumentResolver;
 use Keel\Http\Pipeline;
 use Keel\Http\Responder;
+use Keel\Routing\Redirector;
 use Keel\Routing\Router;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
@@ -28,13 +29,15 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * HTTP kernel: exception handling -> global middleware -> routing -> route middleware -> controller.
  * One instance handles every request of a worker; terminate() resets per-request state.
+ *
+ * @phpstan-import-type MiddlewareEntry from \Keel\Routing\Attribute\MiddlewareProvider
  */
 final class Kernel implements RequestHandlerInterface
 {
     private readonly Pipeline $pipeline;
 
     /**
-     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware global middleware, in order
+     * @param list<MiddlewareInterface|MiddlewareEntry> $middleware global middleware, in order: instances, class names or [class, arguments]
      */
     public function __construct(
         public readonly ContainerInterface $container,
@@ -59,8 +62,8 @@ final class Kernel implements RequestHandlerInterface
      * Builds a kernel on the reflection container: registers PSR-17 factories, the responder,
      * the argument resolver and the router, then wires everything.
      *
-     * @param list<class-string>                                           $controllers
-     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware
+     * @param list<class-string>                        $controllers
+     * @param list<MiddlewareInterface|MiddlewareEntry> $middleware
      */
     public static function build(
         Definitions $definitions,
@@ -79,7 +82,7 @@ final class Kernel implements RequestHandlerInterface
     /**
      * Registers what the kernel needs unless the application already did (as a definition, an alias
      * or an instance under the interface id): nyholm/psr7 as every PSR-17 factory, the server request
-     * creator, Responder and ArgumentResolver.
+     * creator, Responder, ArgumentResolver and the Redirector behind #[Redirect] routes.
      */
     public static function registerDefaults(Definitions $definitions): void
     {
@@ -111,6 +114,9 @@ final class Kernel implements RequestHandlerInterface
         }
         if ($definitions->definition(ArgumentResolver::class) === null) {
             $definitions->set(ArgumentResolver::class);
+        }
+        if ($definitions->definition(Redirector::class) === null) {
+            $definitions->set(Redirector::class);
         }
     }
 

@@ -15,6 +15,8 @@ cd my-app && composer serve
   are what a production API needs on top (since 1.1).
 - [Database](database.md), [Templates](views.md), [Cache](cache.md), [HTTP client](http-client.md)
   wire PDO or Doctrine DBAL, Twig or Latte, a PSR-16 cache and a PSR-18 client (since 1.2).
+- [File storage](storage.md) and [Localization](i18n.md) add disks with upload binding and a
+  translator with locale negotiation.
 - [API stability](api.md) states what semantic versioning covers from 1.0.
 
 Source, issues and benchmarks: [github.com/AloneCoder/keel](https://github.com/AloneCoder/keel).

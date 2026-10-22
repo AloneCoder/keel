@@ -106,6 +106,58 @@ public function delete(int $id): void { /* ... */ }
 `Authentication` — сервис за обоими: `authenticate($request)` прогоняет настроенные
 аутентификаторы, `principal($request)` читает атрибут, `unauthorized()` строит 401.
 
+## Политики
+
+Роли отвечают на «кто ты»; политики — на «можно ли тебе сделать это с тем». Политика — сервис
+с тегом, решающий именованные способности (abilities) для principal и объекта:
+
+```php
+#[Tag(Policy::TAG)]
+final class PostPolicy implements Policy
+{
+    public function abilities(): array
+    {
+        return ['post.view', 'post.update', 'post.delete'];
+    }
+
+    public function allows(Principal $principal, string $ability, mixed $subject): bool
+    {
+        return match ($ability) {
+            'post.view' => true,
+            'post.update' => $subject instanceof Post && $subject->authorId === $principal->id(),
+            'post.delete' => $principal->hasRole('admin'),
+            default => false,
+        };
+    }
+}
+```
+
+`keel:make:policy Post post.update post.delete` сгенерирует такую. Discovery регистрирует её по
+тегу; `Gate` собирает все политики с тегом и спрашивает ту, что объявила способность:
+`allows($user, 'post.update', $post)`, `denies(...)`, `authorize(...)` (бросает 403
+`ForbiddenException` при отказе) и `abilities()`. Способность, которую не объявила ни одна
+политика, — `LogicException`, то есть ошибка конфигурации, а не молчаливый отказ; две политики с
+одной способностью отклоняются при сборке gate.
+
+В хэндлере внедрите `Gate` и principal и проверьте, когда сущность загружена:
+
+```php
+#[Patch('/posts/{id}')]
+#[Auth]
+public function update(int $id, Principal $user, Gate $gate, #[FromBody] UpdatePost $cmd): PostDto
+{
+    $post = $this->posts->get($id);
+    $gate->authorize($user, 'post.update', $post);
+    // ...
+}
+```
+
+Когда для решения хватает параметров маршрута, `#[Can('post.update')]` на методе или классе
+добавляет `PolicyGuard`: он аутентифицирует как `AuthGuard` (401 без principal) и спрашивает gate
+с параметрами маршрута в роли объекта (`['id' => '42']`), отвечая 403 при отказе. `keel:routes`
+показывает способность в колонке Auth; документ OpenAPI получает `security`, 401 и 403, как при
+ролях.
+
 ## Ограничение частоты
 
 `#[RateLimit(limit, window, by)]` разрешает `limit` запросов за `window` секунд (по умолчанию 60)
@@ -133,8 +185,9 @@ public function search(#[FromBody] Query $query): array { /* ... */ }
 анонимный запрос считается по IP.
 
 Счётчики живут в `CounterStorage`: APCu, если расширение загружено (общий для всех воркеров
-сервера), иначе память текущего процесса. Зарегистрируйте свою реализацию под `CounterStorage`
-для Redis или базы; `InMemoryCounters` подходит для тестов. `ApcuCounters` при сбое закрывается:
+сервера), иначе память текущего процесса. `RedisCounters` выносит их в Redis на весь парк
+(`RedisConfig(use: ['counters'])`, см. [Кэш](cache.md#redis)); свою реализацию для чего-то
+другого регистрируйте под `CounterStorage`; `InMemoryCounters` подходит для тестов. `ApcuCounters` при сбое закрывается:
 если APCu не может сохранить счётчик (общая память исчерпана), лимит считается превышенным, а не
 тихо отключается — подбирайте `apc.shm_size` под количество ключей.
 

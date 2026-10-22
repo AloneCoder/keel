@@ -23,6 +23,8 @@
         "friendsofphp/php-cs-fixer": "^3.75",
         "infection/infection": "^0.35.8",
         "latte/latte": "^3.0",
+        "league/flysystem": "^3.29",
+        "monolog/monolog": "^3.8",
         "open-telemetry/sdk": "^1.15",
         "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^12.0",
@@ -39,6 +41,10 @@
         "latte/latte": "Keel\\View\\LatteProvider",
         "ext-apcu": "Shared cache, rate-limit counters and metrics across workers",
         "ext-curl": "Keel\\HttpClient\\CurlClient",
+        "ext-redis": "Keel\\Redis\\RedisProvider: Redis cache, sessions, counters and metrics",
+        "ext-memcached": "Keel\\Cache\\MemcachedCache",
+        "ext-intl": "ICU plural and select patterns in Keel\\I18n",
+        "league/flysystem": "Keel\\Storage\\FlysystemStorage",
         "open-telemetry/sdk": "Keel\\Telemetry\\TracingMiddleware (OpenTelemetry spans per request)"
     },
     "autoload": {

@@ -6,6 +6,7 @@ namespace Keel\View;
 
 use Keel\Container\Definitions;
 use Keel\Container\ServiceProvider;
+use Keel\I18n\Translator;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 
@@ -25,7 +26,7 @@ final class TwigProvider implements ServiceProvider
         $definitions->set(TwigRenderer::class)->alias(ViewRenderer::class);
     }
 
-    public static function environment(TwigConfig $config): Environment
+    public static function environment(TwigConfig $config, ?Translator $translator = null): Environment
     {
         $twig = new Environment(new FilesystemLoader($config->paths), [
             'cache' => $config->cache ?? false,
@@ -35,6 +36,9 @@ final class TwigProvider implements ServiceProvider
         ]);
         foreach ($config->globals as $name => $value) {
             $twig->addGlobal($name, $value);
+        }
+        if ($translator !== null) {
+            $twig->addExtension(new TwigTranslation($translator));
         }
 
         return $twig;

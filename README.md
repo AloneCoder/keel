@@ -19,6 +19,7 @@ Status: 1.2.1, API frozen under semantic versioning. Documentation site: https:/
 - [OpenAPI](docs/en/openapi.md) · [по-русски](docs/ru/openapi.md)
 - [Health and metrics](docs/en/observability.md) · [по-русски](docs/ru/observability.md)
 - [Database](docs/en/database.md), [Templates](docs/en/views.md), [Cache](docs/en/cache.md), [HTTP client](docs/en/http-client.md) · [по-русски](docs/ru/database.md)
+- [File storage](docs/en/storage.md), [Localization](docs/en/i18n.md) · [по-русски](docs/ru/storage.md)
 - [API stability](docs/en/api.md) · [по-русски](docs/ru/api.md)
 
 Try the example:
@@ -32,7 +33,7 @@ php examples/hello/bin/console keel:routes
 The console ships `keel:routes`, `keel:compile`, `keel:cache-clear`, `keel:debug:container`, `keel:doctor`,
 `keel:preload`, `keel:openapi`, `keel:serve` (built-in server or FrankenPHP worker mode with
 `--watch`) and the `keel:make:*` generators for controllers, commands, middleware, listeners,
-health checks and authenticators; see [Application](docs/en/app.md).
+health checks, authenticators and policies; see [Application](docs/en/app.md).
 
 Requirements: PHP >= 8.4.
 

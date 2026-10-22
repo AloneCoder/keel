@@ -6,6 +6,7 @@ namespace Keel\View;
 
 use Keel\Container\Definitions;
 use Keel\Container\ServiceProvider;
+use Keel\I18n\Translator;
 use Latte\Engine;
 use Latte\Loaders\FileLoader;
 
@@ -24,12 +25,15 @@ final class LatteProvider implements ServiceProvider
         $definitions->set(LatteRenderer::class)->alias(ViewRenderer::class);
     }
 
-    public static function engine(LatteConfig $config): Engine
+    public static function engine(LatteConfig $config, ?Translator $translator = null): Engine
     {
         $engine = new Engine();
         $engine->setLoader(new FileLoader($config->directory));
         $engine->setTempDirectory($config->tempDirectory);
         $engine->setAutoRefresh($config->autoRefresh);
+        if ($translator !== null) {
+            $engine->addExtension(new LatteTranslation($translator));
+        }
 
         return $engine;
     }

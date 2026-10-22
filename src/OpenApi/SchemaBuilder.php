@@ -6,15 +6,22 @@ namespace Keel\OpenApi;
 
 use Keel\Http\Pagination\Page;
 use Keel\OpenApi\Attribute\Field;
+use Keel\Validation\Alnum;
 use Keel\Validation\Choice;
 use Keel\Validation\Count;
+use Keel\Validation\Date;
+use Keel\Validation\Each;
 use Keel\Validation\Email;
+use Keel\Validation\Hostname;
+use Keel\Validation\Ip;
 use Keel\Validation\Length;
 use Keel\Validation\NotBlank;
 use Keel\Validation\Pattern;
 use Keel\Validation\Range;
 use Keel\Validation\Rule;
+use Keel\Validation\Unique;
 use Keel\Validation\Url;
+use Keel\Validation\Uuid;
 
 /**
  * JSON Schema (OpenAPI 3.1 dialect) for PHP types. DTO classes become components named after
@@ -252,21 +259,69 @@ final class SchemaBuilder
     private static function constrain(array $schema, \ReflectionParameter $parameter): array
     {
         foreach ($parameter->getAttributes(Rule::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
-            $rule = $attribute->newInstance();
-            $schema = match (true) {
-                $rule instanceof Length => array_merge($schema, array_filter(['minLength' => $rule->min, 'maxLength' => $rule->max], static fn(?int $v): bool => $v !== null)),
-                $rule instanceof Range => array_merge($schema, array_filter(['minimum' => $rule->min, 'maximum' => $rule->max], static fn(int|float|null $v): bool => $v !== null)),
-                $rule instanceof Count => array_merge($schema, array_filter(['minItems' => $rule->min, 'maxItems' => $rule->max], static fn(?int $v): bool => $v !== null)),
-                $rule instanceof Pattern => array_merge($schema, ['pattern' => self::pattern($rule->regex)]),
-                $rule instanceof Email => array_merge($schema, ['format' => 'email']),
-                $rule instanceof Url => array_merge($schema, ['format' => 'uri']),
-                $rule instanceof Choice => array_merge($schema, ['enum' => $rule->choices]),
-                $rule instanceof NotBlank => ($schema['type'] ?? null) === 'string' ? $schema + ['minLength' => 1] : $schema,
-                default => $schema,
-            };
+            $schema = self::applyRule($schema, $attribute->newInstance());
         }
 
         return $schema;
+    }
+
+    /**
+     * What one rule says about a schema; rules without a JSON Schema equivalent (Json, Timezone) say nothing.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return array<string, mixed>
+     */
+    private static function applyRule(array $schema, Rule $rule): array
+    {
+        return match (true) {
+            $rule instanceof Length => array_merge($schema, array_filter(['minLength' => $rule->min, 'maxLength' => $rule->max], static fn(?int $v): bool => $v !== null)),
+            $rule instanceof Range => array_merge($schema, array_filter(['minimum' => $rule->min, 'maximum' => $rule->max], static fn(int|float|null $v): bool => $v !== null)),
+            $rule instanceof Count => array_merge($schema, array_filter(['minItems' => $rule->min, 'maxItems' => $rule->max], static fn(?int $v): bool => $v !== null)),
+            $rule instanceof Pattern => array_merge($schema, ['pattern' => self::pattern($rule->regex)]),
+            $rule instanceof Alnum => array_merge($schema, ['pattern' => self::pattern($rule->regex())]),
+            $rule instanceof Email => array_merge($schema, ['format' => 'email']),
+            $rule instanceof Url => array_merge($schema, ['format' => 'uri']),
+            $rule instanceof Uuid => array_merge($schema, ['format' => 'uuid']),
+            $rule instanceof Hostname => array_merge($schema, ['format' => 'hostname']),
+            $rule instanceof Ip => $rule->version === null ? $schema : array_merge($schema, ['format' => 'ipv' . $rule->version]),
+            $rule instanceof Date => array_merge($schema, ['format' => self::dateFormat($rule->format)]),
+            $rule instanceof Choice => array_merge($schema, ['enum' => $rule->choices]),
+            $rule instanceof Unique => array_merge($schema, ['uniqueItems' => true]),
+            $rule instanceof Each => self::constrainItems($schema, $rule),
+            $rule instanceof NotBlank => ($schema['type'] ?? null) === 'string' ? $schema + ['minLength' => 1] : $schema,
+            default => $schema,
+        };
+    }
+
+    /**
+     * The item rules of #[Each] go to "items" (merged over the element type when one is declared).
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return array<string, mixed>
+     */
+    private static function constrainItems(array $schema, Each $each): array
+    {
+        $items = [];
+        foreach (is_array($schema['items'] ?? null) ? $schema['items'] : [] as $key => $value) {
+            if (is_string($key)) {
+                $items[$key] = $value;
+            }
+        }
+        foreach ($each->rules as $rule) {
+            $items = self::applyRule($items, $rule);
+        }
+
+        return $items === [] ? $schema : array_merge($schema, ['items' => $items]);
+    }
+
+    /**
+     * "Y-m-d" is a JSON Schema date, RFC 3339 formats a date-time; anything else has no name and keeps "date".
+     */
+    private static function dateFormat(string $format): string
+    {
+        return in_array($format, [\DATE_ATOM, \DATE_RFC3339, \DATE_RFC3339_EXTENDED, 'Y-m-d\\TH:i:sP', 'Y-m-d\\TH:i:s.uP', 'Y-m-d H:i:s'], true) ? 'date-time' : 'date';
     }
 
     /**

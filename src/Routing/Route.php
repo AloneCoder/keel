@@ -7,7 +7,8 @@ namespace Keel\Routing;
 /**
  * One declared route: an HTTP method set, a path pattern and a controller method.
  *
- * @phpstan-type RouteArray array{path: string, methods: list<string>, handler: array{0: class-string, 1: string}, name: string|null, middleware: list<class-string<\Psr\Http\Server\MiddlewareInterface>>, status: int|null, options?: array<string, mixed>}
+ * @phpstan-import-type MiddlewareEntry from \Keel\Routing\Attribute\MiddlewareProvider
+ * @phpstan-type RouteArray array{path: string, methods: list<string>, handler: array{0: class-string, 1: string}, name: string|null, middleware: list<MiddlewareEntry>, status: int|null, options?: array<string, mixed>}
  */
 final readonly class Route
 {
@@ -17,7 +18,7 @@ final readonly class Route
     /**
      * @param list<string>                       $methods
      * @param array{0: class-string, 1: string}  $handler    controller class and method
-     * @param list<class-string<\Psr\Http\Server\MiddlewareInterface>>                 $middleware route-specific PSR-15 middleware
+     * @param list<MiddlewareEntry>              $middleware route-specific PSR-15 middleware: class names or [class, arguments]
      * @param int|null                           $status     response status from #[Status]
      * @param array<string, mixed>               $options    values of RouteOption attributes, by key
      */
@@ -41,6 +42,20 @@ final readonly class Route
     public function template(): string
     {
         return (string) preg_replace(self::PLACEHOLDER, '{$1}', $this->path);
+    }
+
+    /**
+     * One template per variant of a path with optional segments ("/users[/{id}]" gives
+     * "/users" and "/users/{id}"); a single template for every other path.
+     *
+     * @return list<string>
+     */
+    public function templates(): array
+    {
+        return array_map(
+            static fn(string $variant): string => (string) preg_replace(self::PLACEHOLDER, '{$1}', $variant),
+            new PathParser()->expand($this->path),
+        );
     }
 
     public function option(string $key): mixed

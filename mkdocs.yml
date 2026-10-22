@@ -62,6 +62,8 @@ plugins:
             Templates: Шаблоны
             Cache: Кэш
             HTTP client: HTTP-клиент
+            File storage: Файловое хранилище
+            Localization: Локализация
 nav:
   - Overview: index.md
   - API stability: api.md
@@ -82,3 +84,5 @@ nav:
       - Templates: views.md
       - Cache: cache.md
       - HTTP client: http-client.md
+      - File storage: storage.md
+      - Localization: i18n.md

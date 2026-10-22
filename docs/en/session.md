@@ -27,8 +27,9 @@ public function login(#[FromBody] Login $cmd, Session $session): array
 | `cookie` (default) | in the cookie itself, HMAC-SHA256 signed, with an expiry | no server state, scales horizontally; the client can read the data (no secrets), 4 KB limit |
 | `file` | `<filePath>/sess_<id>.json`, only a signed id in the cookie | data hidden from the client, more than 4 KB; needs a shared file system or one node |
 
-A custom storage (Redis, ...) implements `SessionStorageInterface` (`read`, `write`, `destroy`) and
-is passed as the second argument of `SessionMiddleware` through a definition in a provider.
+`Keel\Session\RedisStorage` keeps sessions in Redis: `RedisConfig(use: ['sessions'])` with
+`RedisProvider`, see [Cache](cache.md#redis). Any other storage implements
+`SessionStorageInterface` (`read`, `write`, `destroy`) and is registered under that interface.
 Implement `SessionExpiry` (`expiresAt`) as well and the middleware can refresh ageing sessions
 (below).
 
@@ -64,3 +65,30 @@ purpose is what the session middleware uses and what earlier versions signed wit
 Attribute injection works for any object: a middleware stores an object in the request under
 its class name (`$request->withAttribute(Identity::class, $identity)`) and a handler parameter
 `Identity $identity` receives it without touching the container.
+
+## CSRF protection
+
+`CsrfMiddleware`, listed in `HttpConfig` after `SessionMiddleware`, keeps a synchronizer token
+in the session (created on first sight, kept for the life of the session) and leaves a
+`CsrfToken` on the request. A request with an unsafe method (anything but GET, HEAD, OPTIONS,
+TRACE) must repeat the token in the `_token` form field or the `X-CSRF-Token` header, or is
+answered 403 `Invalid CSRF token`.
+
+```php
+// config/csrf.php (optional)
+return new CsrfConfig(field: '_token', header: 'X-CSRF-Token', except: ['/api/']);
+
+#[Get('/profile')]
+public function form(CsrfToken $csrf): string
+{
+    return '<form method="post">' . $csrf->field() . '...</form>';   // hidden input
+}
+```
+
+`CsrfToken::$value` goes into a `fetch()` header; `field()` renders the hidden input;
+`CsrfMiddleware::token($request)` reads it from middleware. `except` lists path prefixes left
+unchecked: an API that authenticates by bearer token or API key is not reachable with a
+browser's ambient cookies and needs no token. To rotate the token (after login, say) remove the
+session key (`_csrf` by default) and the next request gets a fresh one. Under cookie storage the
+token travels inside the signed cookie, which is fine: the attacker's page cannot read it, and
+that is all the check relies on.

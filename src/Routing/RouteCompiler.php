@@ -46,8 +46,6 @@ final class RouteCompiler
         $seenDynamic = [];
 
         foreach ($routes as $index => $route) {
-            $parsed = $this->parser->parse($route->path);
-
             if ($route->name !== null) {
                 if (isset($names[$route->name])) {
                     throw new RoutingException(sprintf('Route name "%s" is declared twice', $route->name));
@@ -55,18 +53,23 @@ final class RouteCompiler
                 $names[$route->name] = $index;
             }
 
-            foreach ($route->methods as $method) {
-                if ($parsed['regex'] === null) {
-                    if (isset($static[$method][$route->path])) {
-                        throw new RoutingException(sprintf('Static route %s %s is declared twice', $method, $route->path));
+            // Optional segments: every variant maps to the same route; a short match leaves its
+            // placeholders out of the parameters, so the handler argument takes its default.
+            foreach ($this->parser->expand($route->path) as $variant) {
+                $parsed = $this->parser->parse($variant);
+                foreach ($route->methods as $method) {
+                    if ($parsed['regex'] === null) {
+                        if (isset($static[$method][$variant])) {
+                            throw new RoutingException(sprintf('Static route %s %s is declared twice', $method, $variant));
+                        }
+                        $static[$method][$variant] = $index;
+                    } else {
+                        if (isset($seenDynamic[$method][$parsed['regex']])) {
+                            throw new RoutingException(sprintf('Dynamic route %s %s is declared twice (same pattern as an earlier route)', $method, $variant));
+                        }
+                        $seenDynamic[$method][$parsed['regex']] = true;
+                        $dynamic[$method][] = [$index, $parsed['regex'], $parsed['variables']];
                     }
-                    $static[$method][$route->path] = $index;
-                } else {
-                    if (isset($seenDynamic[$method][$parsed['regex']])) {
-                        throw new RoutingException(sprintf('Dynamic route %s %s is declared twice (same pattern as an earlier route)', $method, $route->path));
-                    }
-                    $seenDynamic[$method][$parsed['regex']] = true;
-                    $dynamic[$method][] = [$index, $parsed['regex'], $parsed['variables']];
                 }
             }
         }
