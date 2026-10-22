@@ -6,9 +6,15 @@ Until 1.0.0 minor versions may contain breaking changes.
 
 ## [Unreleased]
 
-Hardening release after a full code review. No public method was removed or renamed; constructors
-only gained optional trailing parameters. A few misconfigurations that used to be accepted silently
-now throw at construction or compile time (listed under Changed).
+## [1.3.0] - 2026-10-22
+
+Hardening after a full code review, operations tooling (`keel:doctor`, container diagnostics,
+memory guard, tracing) and the features Slim and Lumen users reach for: optional path segments,
+redirects, route groups, HTTP caching, CSRF, policies, middleware with arguments, a request
+`Input` reader, log channels, Redis and Memcached, file storage and localization. No public
+method was removed or renamed; constructors only gained optional trailing parameters. A few
+misconfigurations that used to be accepted silently now throw at construction or compile time
+(listed under Changed).
 
 ### Added
 

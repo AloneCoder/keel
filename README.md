@@ -6,7 +6,7 @@ A small, worker-first PHP micro-framework: PSR-7/11/14/15/17 all the way, attrib
 routing with scoped discovery, a compiled container and router, and the same code running
 under php-fpm, FrankenPHP worker mode and RoadRunner.
 
-Status: 1.2.1, API frozen under semantic versioning. Documentation site: https://alonecoder.github.io/keel/ Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md) and the roadmap below.
+Status: 1.3.0, API frozen under semantic versioning. Documentation site: https://alonecoder.github.io/keel/ Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md) and the roadmap below.
 
 - [Container](docs/en/container.md) · [по-русски](docs/ru/container.md)
 - [Routing](docs/en/routing.md) · [по-русски](docs/ru/routing.md)
@@ -92,7 +92,10 @@ API key, HMAC), `#[RateLimit]`, health endpoints, Prometheus metrics, an OpenAPI
 derived from the code, and `keel:serve` for FrankenPHP worker mode in development. 1.2 wired the
 usual neighbours: PDO or Doctrine DBAL with health checks, Twig or Latte, a dependency-free PSR-16
 cache and a PSR-18 client on curl; 1.2.1 added the health-check and authenticator generators and
-widened mutation testing. Next: feedback from real projects decides; queues and
+widened mutation testing. 1.3 hardened the code after a full review, added `keel:doctor`, and
+closed the gaps against Slim and Lumen: optional path segments, redirects, route groups, HTTP
+caching, CSRF, policies, middleware with arguments, the `Input` reader, log channels, Redis and
+Memcached, file storage and localization. Next: feedback from real projects decides; queues and
 schedulers stay out of scope.
 
 License: MIT.
