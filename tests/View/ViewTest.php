@@ -58,7 +58,9 @@ final class ViewTest extends TestCase
 
     public function testLatteProviderRendersWithEscaping(): void
     {
+        // Latte creates only the last directory level; in random order this may be the first test to use the tree.
         $temp = sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/latte-' . uniqid();
+        mkdir($temp, 0o775, true);
         $definitions = new Definitions();
         $definitions->instance(LatteConfig::class, new LatteConfig(self::TEMPLATES, $temp, autoRefresh: true));
         $definitions->load(new LatteProvider());
