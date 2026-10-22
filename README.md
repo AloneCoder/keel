@@ -6,7 +6,7 @@ A small, worker-first PHP micro-framework: PSR-7/11/14/15/17 all the way, attrib
 routing with scoped discovery, a compiled container and router, and the same code running
 under php-fpm, FrankenPHP worker mode and RoadRunner.
 
-Status: 1.4.0, API frozen under semantic versioning. Documentation site: https://alonecoder.github.io/keel/ Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md) and the roadmap below.
+Status: 1.5.0, API frozen under semantic versioning. Documentation site: https://alonecoder.github.io/keel/ Start with `composer create-project keel/skeleton my-app`. See [CHANGELOG.md](CHANGELOG.md) and the roadmap below.
 
 - [Container](docs/en/container.md) · [по-русски](docs/ru/container.md)
 - [Routing](docs/en/routing.md) · [по-русски](docs/ru/routing.md)
@@ -101,7 +101,7 @@ Memcached, file storage and localization. 1.4 added what other ecosystems ship f
 security headers, body limits, trusted hosts, idempotency keys, Server-Timing, deprecation
 headers, streaming and Server-Sent Events, load shedding, lifecycle events, work after the
 response, a JWT/JWKS authenticator, an output cache with tags, `keel:install` and
-`keel:ai:init`. 1.5 adds HTTP-client retries with a circuit breaker, signed URLs and Symfony Mailer. Next:
+`keel:ai:init`. 1.5 added HTTP-client retries with a circuit breaker, signed URLs and Symfony Mailer. Next:
 feedback from real projects decides; queues and schedulers stay out of
 scope.
 

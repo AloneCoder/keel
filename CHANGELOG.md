@@ -6,6 +6,8 @@ Until 1.0.0 minor versions may contain breaking changes.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-22
+
 The second wave of the ecosystem survey: resilience for outgoing calls (Polly, SmallRye Fault
 Tolerance, Hyperf, Fiber, tower), signed URLs (Laravel, Roda `hmac_paths`) and mail (Spiral,
 Tempest, Leaf, Quarkus, Flask-Mail). No public method was removed or renamed.

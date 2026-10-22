@@ -6,7 +6,7 @@
 атрибутах с ограниченным discovery, компилируемые контейнер и роутер, и один и тот же код
 под php-fpm, FrankenPHP worker mode и RoadRunner.
 
-Статус: 1.4.0, API заморожен под семантическое версионирование. Сайт документации: https://alonecoder.github.io/keel/ru/ Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md) и дорожную карту ниже.
+Статус: 1.5.0, API заморожен под семантическое версионирование. Сайт документации: https://alonecoder.github.io/keel/ru/ Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md) и дорожную карту ниже.
 
 - [Контейнер](docs/ru/container.md) · [English](docs/en/container.md)
 - [Роутинг](docs/ru/routing.md) · [English](docs/en/routing.md)
@@ -101,7 +101,7 @@ Memcached, файловое хранилище и локализацию. 1.4 д
 коробки: заголовки безопасности, лимиты тела, доверенные хосты, ключи идемпотентности,
 Server-Timing, заголовки устаревания, стриминг и Server-Sent Events, сброс нагрузки, события
 жизненного цикла, работу после ответа, JWT/JWKS аутентификатор, кэш вывода с тегами,
-`keel:install` и `keel:ai:init`. 1.5 добавляет повторы и circuit breaker в HTTP-клиенте,
+`keel:install` и `keel:ai:init`. 1.5 добавил повторы и circuit breaker в HTTP-клиенте,
 подписанные URL и Symfony Mailer. Дальше решает обратная связь от реальных проектов; очереди и
 планировщик остаются за рамками.
 
