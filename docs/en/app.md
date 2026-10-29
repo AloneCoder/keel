@@ -38,11 +38,13 @@ exit(ConsoleFactory::create(App::boot(dirname(__DIR__)))->run());
    `routes.php` (written on first boot).
 5. Container: in debug the reflection `Container`, in prod the compiled class from
    `container.php` (written on first boot). The class name embeds a hash of project and
-   environment, so several apps can live in one process.
+   environment, so several apps can live in one process. A boot with `$configure` always gets
+   the reflection `Container`: its definitions never reach `container.php`, so a test override
+   cannot serve a later production boot, and an existing `container.php` never hides them.
 6. `Kernel` with the middleware from `HttpConfig`.
 
 A cached boot re-supplies only `Env`, the config objects and `Router` to the compiled
-container, so a provider (or `$configure`) calling `Definitions::instance()` for anything else
+container, so a provider calling `Definitions::instance()` for anything else
 would work once and fail on every later boot. Compiling such definitions is refused with a
 `ContainerException`; build the object in a static factory
 (`$d->set($id, Foo::class)->factory(FooFactory::class . '::create')`) or return it from a

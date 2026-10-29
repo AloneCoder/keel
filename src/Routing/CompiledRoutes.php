@@ -8,7 +8,7 @@ namespace Keel\Routing;
  * Match tables produced by RouteCompiler. Serializable to a plain PHP array for caching.
  *
  * @phpstan-import-type RouteArray from Route
- * @phpstan-type DynamicChunk array{regex: string, map: array<int, array{0: int, 1: list<string>}>}
+ * @phpstan-type DynamicChunk array{regex: string, map: array<int, array{0: int, 1: list<string>, 2?: array<int, string>}>}
  * @phpstan-type Exported array{routes: list<RouteArray>, static: array<string, array<string, int>>, dynamic: array<string, list<DynamicChunk>>, names: array<string, int>}
  *
  * @internal

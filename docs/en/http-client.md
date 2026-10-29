@@ -7,13 +7,14 @@ already registers. Guzzle or symfony/http-client drop in by aliasing the interfa
 ```php
 // config/http_client.php
 return new HttpClientConfig(
-    timeout: 10.0,            // whole request, seconds
+    timeout: 10.0,            // whole request with its redirects, seconds
     connectTimeout: 3.0,
     maxRedirects: 5,          // 0 disables following redirects
     verifyTls: true,
     userAgent: 'myapp/1.0',
     headers: ['Accept' => 'application/json'],   // unless the request sets the header
     proxy: null,              // "http://proxy:3128"
+    maxResponseSize: 32 * 1024 * 1024,   // bytes buffered at most; null = no limit
 );
 
 // config/services.php
@@ -50,7 +51,8 @@ final class GeoClient
 - Redirects are followed up to `maxRedirects`, by the client itself rather than by curl, so they
   behave like a browser: 301, 302 and 303 turn a request with a body into a `GET` without one,
   307 and 308 repeat the request as sent, `Authorization`, `Proxy-Authorization` and `Cookie`
-  are dropped when the target is another origin (scheme, host or port), relative `Location`
+  (the request's own and those in `headers`) are dropped when the target is another origin
+  (scheme, host or port), relative `Location`
   values are resolved against the request URI, and only `http`/`https` targets are followed.
   The response is the last hop's; when the limit is reached, the last redirect response is
   returned as is.
@@ -58,8 +60,11 @@ final class GeoClient
   header with every value kept), folded continuation lines are joined, and a response the PSR-7
   factory refuses is a `RequestException`.
 - The body of `POST`, `PUT`, `PATCH` and `DELETE` requests is sent as is; `GET` and `HEAD`
-  never send one. Responses are buffered in memory: for large downloads stream through
-  your own curl call or a dedicated client.
+  never send one. Responses are buffered in memory, up to `maxResponseSize` (32 MiB; a larger
+  body is a `RequestException`): for large downloads stream through your own curl call or a
+  dedicated client.
+- `timeout` covers the whole exchange, redirects included, and must be above 0 (curl reads 0 as
+  "never").
 - One curl handle per client instance is reused across requests of a worker, so keep-alive
   connections to the same host survive between requests. After a failure the handle is
   recreated.

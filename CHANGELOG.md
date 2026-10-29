@@ -6,6 +6,75 @@ Until 1.0.0 minor versions may contain breaking changes.
 
 ## [Unreleased]
 
+The low-severity findings of the 1.5.0 security review.
+
+### Security
+
+- **Auth**: `#[Auth]` or `#[Can]` on a method replaced the class's requirement, so
+  `#[Auth('admin')]` on the class and a bare `#[Auth]` on a method let any user in. Both now
+  apply (`CumulativeOption`).
+- **Http**: a handler parameter typed with a concrete principal class (`?AppUser $user = null`)
+  received a blank object from the container on anonymous requests. `Principal` types now come
+  only from the request (`RequestScoped`).
+- **Runtime**: the request creator took the scheme from `X-Forwarded-Proto` of any client
+  (`javascript://...` in generated links and cache keys). Only `TrustedProxiesMiddleware` applies
+  the header now, from a trusted proxy (`GlobalsRequestCreator`).
+- **Cache**: the `#[OutputCache]` key left out scheme and port, so a response rendered for
+  `http://` or another port was served to the others.
+- **Routing**: a placeholder constraint was checked only on the encoded path, so
+  `{name:[^./]+}` let `%2E%2E%2F` through as `../`, and any placeholder could decode to a NUL
+  byte. The decoded value must now satisfy an explicit constraint too, and NUL never matches.
+- **Routing**: a PCRE failure (backtrack limit) counted as "no match" and handed the request to a
+  later route with other middleware; it now throws `RoutingException`.
+- **Cache**: `MemcachedCache` read any error other than "not found" as a hit (`false`), so with
+  the server down `has()` was true and `remember()` never computed; keys with spaces always
+  failed. Only a hit counts now, and keys Memcached would refuse are hashed.
+- **Validation**: `Alnum`, `Uuid` and `Hostname` accepted a trailing newline (`$` without `D`);
+  the `Pattern` example in the docs did the same.
+- **HttpClient**: credentials in `HttpClientConfig::$headers` were sent again to the target of a
+  cross-origin redirect. A response body had no size limit, and `timeout` applied to each hop
+  instead of the whole exchange.
+- **Auth**: while no JWKS keys were loaded, every token made the worker fetch the JWKS again and
+  wait for its timeout; a failed fetch is now repeated at most every 5 seconds.
+- **App**: definitions from the `App::boot()` `$configure` closure were compiled into the
+  production `container.php` and served later plain boots, while an existing `container.php`
+  ignored them.
+- **Telemetry**: `TracingMiddleware` exported the whole query string, signed-URL signatures and
+  tokens included, and used any client method as the span name.
+- **I18n**: an explicit `locale` argument built the catalogue path as given (`../x`) and cached
+  a catalogue for every distinct value.
+- **Console**: the check written by `keel:make:check` returned the exception message without the
+  exception, so `/health` showed hosts and DSNs even with `exposeDetails` off.
+- **Auth**: a signed URL did not cover the method: a `GET` link under `#[Signed]` on a class
+  also opened `DELETE` on the same path.
+
+### Added
+
+- `Routing\Attribute\CumulativeOption`: a route option that adds to the class-level value.
+- `Http\RequestScoped`: a type handlers receive only from a request attribute; `Principal`
+  extends it.
+- `Runtime\GlobalsRequestCreator`, the default `ServerRequestCreatorInterface`.
+- `HttpClientConfig::$maxResponseSize` (32 MiB by default, `null` for no limit).
+- `UrlSigner::sign()`, `route()`, `verify()` and `status()` take the method a link is for.
+- `TracingMiddleware::SENSITIVE_QUERY`.
+
+### Changed
+
+- **Auth**: `#[Auth]` and `#[Can]` declared on a class and on a method add up instead of the
+  method's replacing the class's. The route option then carries an `also` list.
+- **Routing**: a placeholder value that violates its constraint once decoded, or decodes to NUL,
+  makes the route not match (404).
+- **Auth**: a signed URL used with a method other than `GET`/`HEAD` must be signed for it
+  (`sign($path, method: 'POST')`). Links signed before stay valid for `GET`; one that a form
+  posts to has to be signed again.
+- **HttpClient**: `timeout` covers redirects too and must be above 0, as must `connectTimeout`.
+- **Telemetry**: span names use `HTTP` and `http.request.method` `_OTHER` for non-standard
+  methods, per the OpenTelemetry HTTP conventions.
+- **I18n**: an explicit `locale` is matched against the supported locales (`en-GB` to `en`,
+  unsupported to the default).
+- **App**: a boot with `$configure` always uses the reflection container and writes no
+  `container.php`.
+
 ## [1.5.1] - 2026-10-29
 
 Fixes from a security review of 1.5.0; upgrading is recommended. Two behaviour changes come

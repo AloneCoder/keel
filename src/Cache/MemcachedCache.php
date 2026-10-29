@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Keel\Cache;
 
 /**
- * Entries in Memcached (ext-memcached): shared by every worker on every host. Keys longer than
- * Memcached's 250 bytes are hashed.
+ * Entries in Memcached (ext-memcached): shared by every worker on every host. Keys Memcached
+ * would refuse (over 250 bytes, spaces, control characters) are hashed. Only a hit counts: with
+ * the server down get() returns the default and has() false, so remember() computes the value.
  */
 final class MemcachedCache extends AbstractCache
 {
@@ -19,7 +20,7 @@ final class MemcachedCache extends AbstractCache
     {
         $value = $this->memcached->get($this->name($key));
 
-        return $this->memcached->getResultCode() === \Memcached::RES_NOTFOUND ? $default : $value;
+        return $this->memcached->getResultCode() === \Memcached::RES_SUCCESS ? $value : $default;
     }
 
     public function set(string $key, mixed $value, int|\DateInterval|null $ttl = null): bool
@@ -37,7 +38,7 @@ final class MemcachedCache extends AbstractCache
     {
         $this->memcached->delete($this->name($key));
 
-        return $this->memcached->getResultCode() !== \Memcached::RES_FAILURE;
+        return in_array($this->memcached->getResultCode(), [\Memcached::RES_SUCCESS, \Memcached::RES_NOTFOUND], true);
     }
 
     /**
@@ -52,13 +53,13 @@ final class MemcachedCache extends AbstractCache
     {
         $this->memcached->get($this->name($key));
 
-        return $this->memcached->getResultCode() !== \Memcached::RES_NOTFOUND;
+        return $this->memcached->getResultCode() === \Memcached::RES_SUCCESS;
     }
 
     private function name(string $key): string
     {
         $name = $this->prefix . self::validate($key);
 
-        return strlen($name) > 250 ? $this->prefix . hash('sha256', $key) : $name;
+        return strlen($name) > 250 || preg_match('/[\x00-\x20\x7f]/', $name) === 1 ? $this->prefix . hash('sha256', $key) : $name;
     }
 }

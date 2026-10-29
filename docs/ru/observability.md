@@ -116,11 +116,15 @@ php-fpm или поток FrankenPHP одного сервера прибавл�
 ## Трассировка (OpenTelemetry)
 
 `Keel\Telemetry\TracingMiddleware` открывает по одному серверному спану на запрос: имя
-`GET /users/{id}` (паттерн маршрута, один метод, если ничего не совпало), kind `SERVER`, атрибуты
+`GET /users/{id}` (паттерн маршрута, один метод, если ничего не совпало; нестандартный метод
+записывается как `_OTHER` вместе с `http.request.method_original` и даёт спану имя `HTTP`, чтобы
+клиенты не раздували набор имён спанов), kind `SERVER`, атрибуты
 по семантическим соглашениям HTTP (`http.request.method`, `url.path`, `url.query`, `url.scheme`,
 `server.address`, `http.route`, `user_agent.original`, `client.address`, `keel.request_id`,
 `http.response.status_code`). Входящий заголовок `traceparent` продолжает трассу вызывающего
-(W3C Trace Context; передайте другой `TextMapPropagatorInterface`, чтобы это изменить). Ответ 5xx
+(W3C Trace Context; передайте другой `TextMapPropagatorInterface`, чтобы это изменить). В
+`url.query` значения `signature`, `token`, `access_token`, `password` и остальных параметров из
+`TracingMiddleware::SENSITIVE_QUERY` записываются как `REDACTED`. Ответ 5xx
 или исключение помечают спан ошибкой и записывают исключение; 404 и 400 — нет. Пока работает
 хэндлер, спан активен, так что спаны, которые вы открываете через tracer, становятся его
 потомками, а `TracingMiddleware::span($request)` отдаёт его для своих событий и атрибутов.

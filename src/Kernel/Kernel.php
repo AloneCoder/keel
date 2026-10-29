@@ -13,6 +13,7 @@ use Keel\Http\Responder;
 use Keel\Kernel\Event\ResponseSent;
 use Keel\Routing\Redirector;
 use Keel\Routing\Router;
+use Keel\Runtime\GlobalsRequestCreator;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
 use Nyholm\Psr7Server\ServerRequestCreatorInterface;
@@ -112,7 +113,8 @@ final class Kernel implements RequestHandlerInterface
         }
 
         if ($definitions->definition(ServerRequestCreator::class) === null && !$bound(ServerRequestCreatorInterface::class)) {
-            $definitions->set(ServerRequestCreator::class)->alias(ServerRequestCreatorInterface::class);
+            $definitions->set(ServerRequestCreator::class);
+            $definitions->set(GlobalsRequestCreator::class)->alias(ServerRequestCreatorInterface::class);
         }
         if ($definitions->definition(Responder::class) === null) {
             $definitions->set(Responder::class);

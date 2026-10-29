@@ -221,7 +221,7 @@ final readonly class SignUp
         #[NotBlank, Length(min: 2, max: 50)] public string $name,
         #[Email] public string $email,
         #[Range(min: 18)] public int $age,
-        #[Pattern('/^[a-z0-9-]+$/', 'must be a slug')] public string $slug = '',
+        #[Pattern('/^[a-z0-9-]+$/D', 'must be a slug')] public string $slug = '',
         #[Choice(['free', 'pro'])] public string $plan = 'free',
         #[Count(max: 5)] public array $tags = [],
         #[Url(schemes: ['https'])] public ?string $site = null,
@@ -233,7 +233,7 @@ Rules: `NotBlank`, `Length`, `Range`, `Count`, `Pattern`, `Alnum(allow: '-_')`, 
 `Uuid`, `Ip(version: 4|6)`, `Hostname`, `Date(format: 'Y-m-d')`, `Json`, `Timezone`, `Choice`,
 `Unique` (no duplicate items) and `Each(new NotBlank(), new Length(max: 30))`, which runs its
 rules on every item of an array and reports the first failing one as `tags: [2]: must not be
-blank`. A rule runs
+blank`. End a `Pattern` with `$/D`: without `D`, `$` also accepts a trailing newline. A rule runs
 only on fields that were sent; `null` is checked by `NotBlank` alone; after a type error the
 field's rules are skipped. A custom rule is an attribute class implementing
 `Keel\Validation\Rule::check()`.
@@ -268,7 +268,9 @@ Route attributes add their own middleware: `#[Deprecated]` adds `DeprecationMidd
 trusted proxy. When every hop is trusted, as with `proxies: ['*']`, it takes the rightmost valid
 address, the one appended by the proxy next to us, never the leftmost entry, which is whatever the
 client sent. A trusted `X-Forwarded-Proto` that changes the scheme also drops the port of the
-listening socket unless `X-Forwarded-Port` or a port in `X-Forwarded-Host` says otherwise.
+listening socket unless `X-Forwarded-Port` or a port in `X-Forwarded-Host` says otherwise. The
+runtimes build the request without `X-Forwarded-Proto` (nyholm's creator would take the scheme
+from any client): only this middleware applies it, and only from a trusted proxy.
 
 The order of the list matters. One that works for an API behind a proxy:
 

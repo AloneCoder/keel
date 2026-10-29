@@ -43,7 +43,7 @@ final class RatesService
 | `FileCache` | every worker on the host | one serialized file per entry, atomic writes, expired entries removed on read and by a probabilistic sweep (`sweep()` runs it on demand, and drops temporary files a crashed write left behind) |
 | `ArrayCache` | the current process only | tests and per-worker memoization |
 | `RedisCache` (`driver: 'redis'`) | every worker on every host | ext-redis through `RedisProvider` (below); values serialized with `serialize()`, so keep the instance private |
-| `MemcachedCache` (`driver: 'memcached'`) | every worker on every host | ext-memcached, `servers: ['host:11211']`; keys over 250 bytes are hashed; `clear()` flushes the whole instance |
+| `MemcachedCache` (`driver: 'memcached'`) | every worker on every host | ext-memcached, `servers: ['host:11211']`; keys over 250 bytes or with spaces are hashed; a server that does not answer is a miss; `clear()` flushes the whole instance |
 
 Keys follow PSR-16: up to 256 characters, none of `{}()/\@:`; a bad key throws
 `InvalidKeyException` (a `Psr\SimpleCache\InvalidArgumentException`). TTLs are seconds or a
@@ -111,7 +111,7 @@ public function update(int $id, #[FromBody] ProductPatch $patch, OutputCacheStor
 }
 ```
 
-The key is the method, host and path, plus the query string (`varyByQuery: true`, the default;
+The key is the method, scheme, host, port and path, plus the query string (`varyByQuery: true`, the default;
 `false` ignores it; a list keeps only those parameters), the listed request headers and, with
 `varyByPrincipal: true`, the principal. Tags may name route placeholders (`product:{id}`).
 `invalidateTags()` gives each tag a new version; a stored response remembers the versions it was

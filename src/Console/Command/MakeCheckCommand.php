@@ -61,7 +61,8 @@ final class MakeCheckCommand extends MakeCommandBase
                     try {
                         // Touch the dependency here; throw or return HealthResult::down() when it is unreachable.
                     } catch (\\Throwable \$e) {
-                        return HealthResult::down(\$e->getMessage());
+                        // With exception: the message (hosts, DSNs) is shown only when HealthConfig::\$exposeDetails.
+                        return HealthResult::down(\$e->getMessage(), exception: \$e);
                     }
 
                     return HealthResult::up(data: ['ms' => round((hrtime(true) - \$started) / 1e6, 2)]);

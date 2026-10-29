@@ -54,7 +54,9 @@ final class AppBuilder
         $router = self::router($controllers, $cacheDir, $config->debug);
         $definitions->instance(Router::class, $router);
 
-        if ($config->debug) {
+        // Definitions from $configure belong to this boot only: compiled into container.php they
+        // would serve every later boot, and an existing container.php would ignore them.
+        if ($config->debug || $configure !== null) {
             $container = new Container($definitions);
         } else {
             $cache = $cacheDir . '/container.php';

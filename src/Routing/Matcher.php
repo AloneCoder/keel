@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Keel\Routing;
 
+use Keel\Routing\Exception\RoutingException;
+
 /**
  * @internal
  */
@@ -15,7 +17,13 @@ final class Matcher
      * Methods are case-sensitive (RFC 9110 §9.1): "post" is not POST and gets 405, so everything
      * keyed by the method (rate limits, caches) sees the same spelling the route matched.
      *
+     * A placeholder value must satisfy its constraint once decoded too ("%2E%2E" does not get past
+     * [^.]+) and never decodes to a NUL byte; otherwise the route does not match.
+     *
      * @param string $path raw (undecoded) request path; placeholders are decoded individually
+     *
+     * @throws RoutingException when PCRE fails (backtrack limit): treating that as "no match" would
+     *                          hand the request to a later route with other middleware
      */
     public function match(string $method, string $path): MatchResult
     {
@@ -52,14 +60,24 @@ final class Matcher
         }
 
         foreach ($this->routes->dynamic[$method] ?? [] as $chunk) {
-            if (preg_match($chunk['regex'], $path, $matches) !== 1) {
+            $matched = preg_match($chunk['regex'], $path, $matches);
+            if ($matched === false) {
+                throw new RoutingException('Route matching failed: ' . preg_last_error_msg());
+            }
+            if ($matched !== 1) {
                 continue;
             }
 
-            [$index, $variables] = $chunk['map'][count($matches)];
+            $entry = $chunk['map'][count($matches)];
+            [$index, $variables] = $entry;
+            $checks = $entry[2] ?? [];
             $params = [];
             foreach ($variables as $position => $name) {
-                $params[$name] = rawurldecode($matches[$position + 1]);
+                $value = rawurldecode($matches[$position + 1]);
+                if (str_contains($value, "\0") || (isset($checks[$position]) && preg_match($checks[$position], $value) !== 1)) {
+                    return null;
+                }
+                $params[$name] = $value;
             }
 
             return MatchResult::found($this->routes->route($index), $params);

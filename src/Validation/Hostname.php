@@ -28,11 +28,11 @@ final readonly class Hostname implements Rule
             return $this->message;
         }
         foreach ($labels as $label) {
-            if (preg_match('/^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$/', $label) !== 1) {
+            if (preg_match('/^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$/D', $label) !== 1) {
                 return $this->message;
             }
         }
-        if ($this->requireTld && preg_match('/^[A-Za-z]{2,63}$/', end($labels)) !== 1) {
+        if ($this->requireTld && preg_match('/^[A-Za-z]{2,63}$/D', end($labels)) !== 1) {
             return $this->message;
         }
 

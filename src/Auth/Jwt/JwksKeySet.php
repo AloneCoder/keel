@@ -17,11 +17,16 @@ use Psr\SimpleCache\CacheInterface;
  * a refetch (the provider may have rotated its keys), at most once per $refreshInterval, so
  * forged key ids cannot make every request call the provider. When a refetch fails the keys
  * already known stay in use; without any, verification fails with a RuntimeException (a 500,
- * logged), not a 401.
+ * logged), not a 401, and the provider is asked again at most every 5 seconds.
  */
 final class JwksKeySet implements KeySet
 {
+    /** Seconds between fetches while there are no keys at all and the last fetch failed. */
+    private const int COLD_RETRY = 5;
+
     private ?StaticKeySet $keys = null;
+
+    private ?string $failure = null;
 
     private int $loadedAt = 0;
 
@@ -71,11 +76,16 @@ final class JwksKeySet implements KeySet
         if ($this->keys !== null && $now - $this->attemptedAt < $this->refreshInterval) {
             return; // a fetch failed moments ago: keep the stale keys rather than hammer the provider
         }
+        if ($this->keys === null && $this->failure !== null && $now - $this->attemptedAt < min(self::COLD_RETRY, $this->refreshInterval)) {
+            // No keys yet and the provider just failed: every token would wait for the same timeout.
+            throw new \RuntimeException(sprintf('JWKS from %s is unavailable: %s', $this->url, $this->failure));
+        }
 
         $this->attemptedAt = $now;
         try {
             $jwks = $this->fetch();
         } catch (\Throwable $exception) {
+            $this->failure = $exception->getMessage();
             $this->logger?->error(sprintf('Fetching JWKS from %s failed: %s', $this->url, $exception->getMessage()), ['exception' => $exception]);
             if ($this->keys === null) {
                 throw new \RuntimeException(sprintf('JWKS from %s is unavailable: %s', $this->url, $exception->getMessage()), 0, $exception);
@@ -83,6 +93,7 @@ final class JwksKeySet implements KeySet
 
             return;
         }
+        $this->failure = null;
         $this->keys = StaticKeySet::fromJwks($jwks);
         $this->loadedAt = $now;
         $this->cache?->set($cacheKey, ['at' => $now, 'jwks' => $jwks], $this->ttl);

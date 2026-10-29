@@ -34,6 +34,12 @@ final class PolicyGuard implements MiddlewareInterface
             throw new \LogicException('PolicyGuard runs on a route without a #[Can] option');
         }
 
+        // The abilities of the enclosing #[Can] declarations first, then the route's own.
+        foreach (is_array($option['also'] ?? null) ? $option['also'] : [] as $outer) {
+            if (is_string($outer)) {
+                $this->gate->authorize($principal, $outer, $match->params);
+            }
+        }
         $this->gate->authorize($principal, $ability, $match->params);
 
         return $handler->handle($request);

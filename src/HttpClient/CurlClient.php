@@ -13,13 +13,15 @@ use Psr\Http\Message\UriInterface;
 
 /**
  * PSR-18 client on ext-curl. One handle per instance, reused across requests of a worker, so
- * connections stay open between requests to the same host. Responses are buffered in memory.
- * Status codes are never turned into exceptions, as PSR-18 requires.
+ * connections stay open between requests to the same host. Responses are buffered in memory, up
+ * to HttpClientConfig::$maxResponseSize. Status codes are never turned into exceptions, as PSR-18
+ * requires.
  *
- * Redirects are followed by the client itself, hop by hop: 301, 302 and 303 turn a request with
- * a body into a GET without one, 307 and 308 repeat the request as is, and credentials
- * (Authorization, Proxy-Authorization, Cookie) are dropped when the target is another origin.
- * Only http and https targets are followed.
+ * Redirects are followed by the client itself, hop by hop, within one timeout: 301, 302 and 303
+ * turn a request with a body into a GET without one, 307 and 308 repeat the request as is, and
+ * credentials (Authorization, Proxy-Authorization, Cookie), the request's own as well as those in
+ * HttpClientConfig::$headers, are dropped when the target is another origin. Only http and https
+ * targets are followed.
  */
 final class CurlClient implements ClientInterface
 {
@@ -45,8 +47,9 @@ final class CurlClient implements ClientInterface
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         $current = $request;
+        $deadline = hrtime(true) + (int) ($this->config->timeout * 1e9);
         for ($hop = 0; ; $hop++) {
-            $response = $this->execute($current, $request);
+            $response = $this->execute($current, $request, $deadline);
             $target = $this->redirectTarget($current, $response);
             if ($target === null || $hop >= $this->config->maxRedirects) {
                 return $response;
@@ -56,9 +59,10 @@ final class CurlClient implements ClientInterface
     }
 
     /**
-     * One request on the wire, as given; $original is what the exceptions report.
+     * One request on the wire, as given; $original is what the exceptions report, $deadline (hrtime)
+     * when the whole exchange, redirects included, runs out of time.
      */
-    private function execute(RequestInterface $request, RequestInterface $original): ResponseInterface
+    private function execute(RequestInterface $request, RequestInterface $original, int $deadline): ResponseInterface
     {
         $scheme = $request->getUri()->getScheme();
         if (!in_array($scheme, ['http', 'https'], true)) {
@@ -70,18 +74,24 @@ final class CurlClient implements ClientInterface
             throw new RequestException($original, 'Request needs a URL and a method');
         }
 
+        $left = (int) ceil(($deadline - hrtime(true)) / 1e6);
+        if ($left <= 0) {
+            throw new NetworkException($original, 'Timed out following redirects', \CURLE_OPERATION_TIMEDOUT);
+        }
+
         $handle = $this->handle ??= curl_init();
         curl_reset($handle);
 
         /** @var list<string> $responseHeaders */
         $responseHeaders = [];
+        $responseBody = '';
+        $limit = $this->config->maxResponseSize;
         $options = [
             \CURLOPT_URL => $url,
             \CURLOPT_CUSTOMREQUEST => $method,
-            \CURLOPT_RETURNTRANSFER => true,
             \CURLOPT_HEADER => false,
-            \CURLOPT_TIMEOUT_MS => (int) round($this->config->timeout * 1000),
-            \CURLOPT_CONNECTTIMEOUT_MS => (int) round($this->config->connectTimeout * 1000),
+            \CURLOPT_TIMEOUT_MS => $left,
+            \CURLOPT_CONNECTTIMEOUT_MS => min($left, max(1, (int) round($this->config->connectTimeout * 1000))),
             \CURLOPT_FOLLOWLOCATION => false,
             \CURLOPT_SSL_VERIFYPEER => $this->config->verifyTls,
             \CURLOPT_SSL_VERIFYHOST => $this->config->verifyTls ? 2 : 0,
@@ -91,7 +101,19 @@ final class CurlClient implements ClientInterface
 
                 return strlen($line);
             },
+            // Returning less than the chunk aborts the transfer (CURLE_WRITE_ERROR).
+            \CURLOPT_WRITEFUNCTION => static function (\CurlHandle $h, string $chunk) use (&$responseBody, $limit): int {
+                if ($limit !== null && strlen($responseBody) + strlen($chunk) > $limit) {
+                    return 0;
+                }
+                $responseBody .= $chunk;
+
+                return strlen($chunk);
+            },
         ];
+        if ($limit !== null) {
+            $options[\CURLOPT_MAXFILESIZE_LARGE] = $limit;
+        }
         if (defined('CURLOPT_PROTOCOLS_STR')) {
             $options[\CURLOPT_PROTOCOLS_STR] = 'http,https';
         } else {
@@ -108,8 +130,9 @@ final class CurlClient implements ClientInterface
         }
 
         $headers = [];
+        $sameOrigin = self::origin($request->getUri()) === self::origin($original->getUri());
         foreach ($this->config->headers as $name => $value) {
-            if (!$request->hasHeader($name)) {
+            if (!$request->hasHeader($name) && ($sameOrigin || !self::isCredential($name))) {
                 $headers[] = $name . ': ' . $value;
             }
         }
@@ -135,18 +158,20 @@ final class CurlClient implements ClientInterface
         $options[\CURLOPT_HTTPHEADER] = $headers;
 
         curl_setopt_array($handle, $options);
-        $raw = curl_exec($handle);
-        if (!is_string($raw)) {
+        if (curl_exec($handle) !== true) {
             $error = curl_error($handle);
             $code = curl_errno($handle);
             // The handle may be in a bad state after a failure: start over next time.
             curl_close($handle);
             $this->handle = null;
+            if ($limit !== null && in_array($code, [\CURLE_WRITE_ERROR, \CURLE_FILESIZE_EXCEEDED], true)) {
+                throw new RequestException($original, sprintf('Response body exceeds %d bytes (HttpClientConfig::$maxResponseSize)', $limit));
+            }
 
             throw new NetworkException($original, sprintf('%s (curl %d)', $error !== '' ? $error : 'request failed', $code), $code);
         }
 
-        return $this->response($responseHeaders, $raw, $original);
+        return $this->response($responseHeaders, $responseBody, $original);
     }
 
     /**
@@ -182,6 +207,17 @@ final class CurlClient implements ClientInterface
         }
 
         return $next;
+    }
+
+    private static function isCredential(string $header): bool
+    {
+        foreach (self::CREDENTIALS as $credential) {
+            if (strcasecmp($header, $credential) === 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function origin(UriInterface $uri): string

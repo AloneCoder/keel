@@ -21,8 +21,8 @@ use Psr\Http\Message\UploadedFileInterface;
  * the request / RouteMatch / Route / Input by type, #[FromQuery], #[FromBody], #[FromHeader],
  * #[FromCookie], #[FromFile], a path placeholder
  * with the parameter's name (type-cast), a request attribute keyed by the parameter's class
- * (what SessionMiddleware and auth middleware leave behind), a service from the container,
- * the default value.
+ * (what SessionMiddleware and auth middleware leave behind), a service from the container
+ * (never for a RequestScoped type), the default value.
  */
 final class ArgumentResolver
 {
@@ -162,7 +162,7 @@ final class ArgumentResolver
             }
         }
 
-        if ($class !== null && $this->container->has($class)) {
+        if ($class !== null && !is_a($class, RequestScoped::class, true) && $this->container->has($class)) {
             return $this->container->get($class);
         }
 

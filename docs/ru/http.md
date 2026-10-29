@@ -223,7 +223,7 @@ final readonly class SignUp
         #[NotBlank, Length(min: 2, max: 50)] public string $name,
         #[Email] public string $email,
         #[Range(min: 18)] public int $age,
-        #[Pattern('/^[a-z0-9-]+$/', 'must be a slug')] public string $slug = '',
+        #[Pattern('/^[a-z0-9-]+$/D', 'must be a slug')] public string $slug = '',
         #[Choice(['free', 'pro'])] public string $plan = 'free',
         #[Count(max: 5)] public array $tags = [],
         #[Url(schemes: ['https'])] public ?string $site = null,
@@ -235,7 +235,8 @@ final readonly class SignUp
 `Uuid`, `Ip(version: 4|6)`, `Hostname`, `Date(format: 'Y-m-d')`, `Json`, `Timezone`, `Choice`,
 `Unique` (без повторяющихся элементов) и `Each(new NotBlank(), new Length(max: 30))`, которое
 прогоняет свои правила по каждому элементу массива и сообщает о первом неподходящем как
-`tags: [2]: must not be blank`. Правило применяется только к переданным полям; `null` проверяет лишь `NotBlank`; при ошибке типа правила
+`tags: [2]: must not be blank`. Завершайте `Pattern` на `$/D`: без `D` знак `$` пропускает и
+завершающий перевод строки. Правило применяется только к переданным полям; `null` проверяет лишь `NotBlank`; при ошибке типа правила
 поля не запускаются. Своё правило — класс-атрибут, реализующий `Keel\Validation\Rule::check()`.
 
 ## Встроенные middleware
@@ -268,7 +269,9 @@ final readonly class SignUp
 доверенным прокси. Если доверены все (как при `proxies: ['*']`), берётся самый правый валидный
 адрес — его дописал ближайший к нам прокси; самый левый, который прислал клиент, не берётся
 никогда. Доверенный `X-Forwarded-Proto`, меняющий схему, заодно сбрасывает порт слушающего
-сокета, если `X-Forwarded-Port` или порт в `X-Forwarded-Host` не задают другой.
+сокета, если `X-Forwarded-Port` или порт в `X-Forwarded-Host` не задают другой. Рантаймы
+собирают запрос без `X-Forwarded-Proto` (создатель запросов nyholm взял бы схему от любого
+клиента): применяет его только этот middleware и только от доверенного прокси.
 
 Порядок в списке важен. Рабочий вариант для API за прокси:
 

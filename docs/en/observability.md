@@ -115,11 +115,15 @@ an implementation under `MetricsStorage` for anything else.
 ## Tracing (OpenTelemetry)
 
 `Keel\Telemetry\TracingMiddleware` starts one server span per request: named `GET /users/{id}`
-(the route pattern, the method alone when nothing matched), kind `SERVER`, with the HTTP semantic
+(the route pattern, the method alone when nothing matched; a method outside the standard ones is
+recorded as `_OTHER`, with `http.request.method_original`, and names the span `HTTP`, so clients
+cannot grow the set of span names), kind `SERVER`, with the HTTP semantic
 attributes (`http.request.method`, `url.path`, `url.query`, `url.scheme`, `server.address`,
 `http.route`, `user_agent.original`, `client.address`, `keel.request_id`,
 `http.response.status_code`). An incoming `traceparent` header continues the caller's trace
-(W3C Trace Context; pass another `TextMapPropagatorInterface` to change that). A 5xx answer or an
+(W3C Trace Context; pass another `TextMapPropagatorInterface` to change that). In `url.query`
+the values of `signature`, `token`, `access_token`, `password` and the other
+`TracingMiddleware::SENSITIVE_QUERY` parameters are written as `REDACTED`. A 5xx answer or an
 exception marks the span as an error and records the exception; a 404 or 400 does not. The span is
 active while the handler runs, so spans you start through the tracer become its children, and
 `TracingMiddleware::span($request)` returns it for events and attributes of your own.

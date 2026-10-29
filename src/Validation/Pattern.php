@@ -8,7 +8,7 @@ namespace Keel\Validation;
 final readonly class Pattern implements Rule
 {
     /**
-     * @param string $regex full PCRE pattern with delimiters, e.g. '/^[a-z0-9-]+$/'
+     * @param string $regex full PCRE pattern with delimiters, e.g. '/^[a-z0-9-]+$/D' (D: $ does not accept a trailing newline)
      */
     public function __construct(public string $regex, public string $message = 'has an invalid format') {}
 

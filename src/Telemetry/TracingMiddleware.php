@@ -30,12 +30,25 @@ use Psr\Http\Server\RequestHandlerInterface;
  * attribute (span()) for events and extra attributes. 5xx answers and exceptions mark it as
  * an error, and the exception is recorded.
  *
+ * A method outside the standard ones is recorded as "_OTHER" (the span is then named "HTTP"), so
+ * clients cannot grow the set of span names; the values of query parameters listed in
+ * SENSITIVE_QUERY (signed-URL signatures, tokens) are written as "REDACTED".
+ *
  * Needs open-telemetry/api; register a TracerProviderInterface (from open-telemetry/sdk, or the
  * no-op one) in the container: composer require open-telemetry/sdk.
  */
 final class TracingMiddleware implements MiddlewareInterface
 {
     public const string SPAN = 'otel.span';
+
+    /** Query parameters (compared case-insensitively) whose values never reach the tracing backend. */
+    public const array SENSITIVE_QUERY = [
+        'signature', 'sig', 'x-goog-signature', 'awsaccesskeyid', 'token', 'access_token', 'refresh_token',
+        'id_token', 'code', 'password', 'secret', 'api_key', 'apikey', 'key',
+    ];
+
+    /** Methods recorded as themselves (OpenTelemetry HTTP semantic conventions). */
+    private const array METHODS = ['CONNECT', 'DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'TRACE'];
 
     private readonly TracerInterface $tracer;
 
@@ -64,7 +77,7 @@ final class TracingMiddleware implements MiddlewareInterface
             $carrier[strtolower($name)] = implode(', ', $values);
         }
 
-        $method = $request->getMethod();
+        $method = in_array($request->getMethod(), self::METHODS, true) ? $request->getMethod() : '_OTHER';
         $route = $this->route($request);
         $uri = $request->getUri();
         $attributes = [
@@ -73,8 +86,11 @@ final class TracingMiddleware implements MiddlewareInterface
             'url.scheme' => $uri->getScheme(),
             'server.address' => $uri->getHost(),
         ];
+        if ($method === '_OTHER') {
+            $attributes['http.request.method_original'] = $request->getMethod();
+        }
         if ($uri->getQuery() !== '') {
-            $attributes['url.query'] = $uri->getQuery();
+            $attributes['url.query'] = self::redacted($uri->getQuery());
         }
         if ($route !== null) {
             $attributes['http.route'] = $route;
@@ -91,10 +107,7 @@ final class TracingMiddleware implements MiddlewareInterface
             $attributes['keel.request_id'] = $requestId;
         }
 
-        $name = $route === null ? $method : $method . ' ' . $route;
-        if ($name === '') {
-            $name = 'HTTP';
-        }
+        $name = ($method === '_OTHER' ? 'HTTP' : $method) . ($route === null ? '' : ' ' . $route);
         $span = $this->tracer->spanBuilder($name)
             ->setParent($this->propagator->extract($carrier))
             ->setSpanKind(SpanKind::KIND_SERVER)
@@ -135,6 +148,22 @@ final class TracingMiddleware implements MiddlewareInterface
      * The route pattern: from the routing result when routing already ran, else a lookup, so a
      * global middleware still names spans by route instead of by concrete path.
      */
+    /**
+     * The query with the values of SENSITIVE_QUERY parameters replaced by "REDACTED".
+     */
+    private static function redacted(string $query): string
+    {
+        $pairs = explode('&', $query);
+        foreach ($pairs as $i => $pair) {
+            [$name, $value] = explode('=', $pair, 2) + [1 => ''];
+            if ($value !== '' && in_array(strtolower(urldecode($name)), self::SENSITIVE_QUERY, true)) {
+                $pairs[$i] = $name . '=REDACTED';
+            }
+        }
+
+        return implode('&', $pairs);
+    }
+
     private function route(ServerRequestInterface $request): ?string
     {
         $match = $request->getAttribute(RouteMatch::class);

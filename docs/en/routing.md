@@ -48,7 +48,9 @@ final class UserController
 
 Two interfaces let other attributes travel with a route. `RouteOption` stores a value on the
 route (`Route::$options[key]`, read with `Route::option('key')`): declared on the class it applies
-to every route, a method-level attribute with the same key overrides it; values go through the
+to every route, a method-level attribute with the same key overrides it, unless it implements
+`CumulativeOption` and adds to it instead (`#[Auth]` and `#[Can]` do, so a method cannot loosen
+what its class requires); values go through the
 route cache, so they must be exportable (scalars, arrays). `MiddlewareProvider` adds middleware
 classes to the route; `#[Middleware]` itself is one. `#[Auth]` and `#[RateLimit]` implement both,
 which is how they enforce themselves: the attribute records its settings and adds the guard that
@@ -63,6 +65,9 @@ reads them from the `RouteMatch` request attribute.
 - The pattern is matched against the **percent-encoded** path (see Matching): `\d+` and
   `[a-z-]+` work, `\p{L}` or any other non-ASCII constraint never matches an encoded `%C3%B6`.
   For non-ASCII values keep the default `[^/]+` and validate the decoded value in the handler.
+  The decoded value must satisfy the pattern too, so `{name:[^./]+}` does not match `%2E%2E%2F`;
+  the default `[^/]+` keeps a segment whole and is not checked again (`a%2Fb` gives `a/b`). No
+  placeholder value may decode to a NUL byte.
 - A path starts with `/`. The trailing slash is part of the path: `/users` and `/users/` are
   different routes.
 - `[...]` at the end of the path marks optional segments, nested if needed:
@@ -78,7 +83,8 @@ reads them from the `RouteMatch` request attribute.
 A controller's parent classes act as route groups. `#[Prefix]`, `#[Middleware]` and every
 `RouteOption` attribute (`#[Auth]`, `#[RateLimit]`, `#[CacheControl]`, ...) declared on a
 parent apply to the subclass: prefixes are joined root-first, parent middleware runs first,
-and an option declared again on the subclass or the method overrides the parent's.
+and an option declared again on the subclass or the method overrides the parent's (requirements
+such as `#[Auth]` and `#[Can]` add up instead).
 
 ```php
 #[Prefix('/api/v1')]
@@ -126,6 +132,8 @@ Static paths are looked up in a hash; dynamic ones with one `preg_match` per chu
 as in FastRoute). Matching runs against the **raw** request path, without decoding, so that
 `%2F` cannot change the structure; placeholder values are decoded individually with
 `rawurldecode`. A `\d+` constraint is checked before decoding, so `/users/%34%32` does not match.
+When PCRE gives up on a path (backtrack limit), matching throws `RoutingException` (a 500)
+instead of trying the routes after it, which may carry other middleware.
 
 A static path always wins over a dynamic one. Among the dynamic routes of a method the **first
 declared** route that matches wins, so when two patterns overlap (`/items/{id:\d+}` and
@@ -195,6 +203,10 @@ $signer->status($request->getUri());            // SignedUrlStatus::Valid, Missi
 - The signature covers the path and the whole query string exactly as sent, `expires`
   included: a parameter added, removed, reordered or changed, or a later expiry, gives 403
   `Invalid URL signature`; a past one `This link has expired`; none `This URL must be signed`.
+- A link is for `GET` (and `HEAD`) unless it is signed for another method
+  (`sign($path, method: 'DELETE')`, `route($name, $params, method: 'POST')`); the method is then
+  signed too and `#[Signed]` checks it, so a download link never opens `DELETE` on the same path.
+  `GET` links signed by earlier versions stay valid.
 - Scheme, host and `baseUrl` are not signed: the link is valid wherever the application receives
   the same path. Behind a proxy that mounts the application under a prefix, put the prefix in
   `baseUrl` (`https://example.com/app`) and the links stay valid.

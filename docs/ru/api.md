@@ -10,10 +10,10 @@
 |---|---|
 | Container | `Definitions`, `Definition`, `Container`, `Compiler`, `ContainerInterface`, `Resettable`, `ServiceProvider`, `Ref`, классы `Attribute\*` и `Exception\*` |
 | Routing | `Router`, `Route`, `RouteMatch`, `MatchResult`, `MatchStatus`, классы `Attribute\*`, `Exception\RoutingException` |
-| HTTP | `Pipeline`, `CallableHandler`, `Responder`, `ArgumentResolver`, `Hydrator`, `EmitterInterface`, `SapiEmitter`, классы `Attribute\*`, `Exception\*` и `Middleware\*`; с 1.4 `ServerTiming`, `EventStream`, `SseEvent`, `Stream\IteratorStream` |
+| HTTP | `Pipeline`, `CallableHandler`, `Responder`, `ArgumentResolver`, `Hydrator`, `EmitterInterface`, `SapiEmitter`, `RequestScoped`, классы `Attribute\*`, `Exception\*` и `Middleware\*`; с 1.4 `ServerTiming`, `EventStream`, `SseEvent`, `Stream\IteratorStream` |
 | Validation | `Rule` и все атрибуты-правила |
 | Kernel | `Kernel`, `ExceptionHandlerMiddleware`, `ProblemDetails`; с 1.4 `DeferredTasks` и классы `Event\*` |
-| Runtime | `RuntimeInterface`, `Runtime`, `FpmRuntime`, `FrankenPhpRuntime`, `RoadRunnerRuntime`, `MemoryGuard`; с 1.4 `LoadSheddingMiddleware`, `LoadSheddingConfig`, `InFlightCounter` и его реализации |
+| Runtime | `RuntimeInterface`, `Runtime`, `FpmRuntime`, `FrankenPhpRuntime`, `RoadRunnerRuntime`, `MemoryGuard`, `GlobalsRequestCreator`; с 1.4 `LoadSheddingMiddleware`, `LoadSheddingConfig`, `InFlightCounter` и его реализации |
 | App | `App` (кроме членов с `@internal`), `Config\*`, `Discovery\DiscoveryInterface`, `Discoverer` и встроенные discovery, `Event\*`, `Log\*`, `Session\*`, `Testing\*`, `Console\ConsoleFactory` |
 | Auth (1.1) | `Principal`, `Identity`, `Authenticator`, `PrincipalResolver`, `HmacSecrets`, `SecurityScheme`, встроенные аутентификаторы, `Authentication`, `AuthMiddleware`, `AuthGuard`, `AuthConfig`, `Attribute\Auth` |
 | RateLimit (1.1) | `Attribute\RateLimit`, `RateLimiter`, `RateLimitResult`, `RateLimitGuard`, `CounterStorage` и его реализации |

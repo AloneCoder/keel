@@ -51,7 +51,8 @@ final class App
 
     /**
      * @param (\Closure(Definitions, Env): void)|null $configure last-minute definitions for debug mode and tests;
-     *                                                           forces the full assembly
+     *                                                           forces the full assembly with an uncompiled
+     *                                                           container that no cache keeps
      */
     public static function boot(string $projectDir, ?Env $env = null, ?\Closure $configure = null): self
     {

@@ -10,10 +10,10 @@ a new major version, with a deprecation in the previous minor where feasible.
 |---|---|
 | Container | `Definitions`, `Definition`, `Container`, `Compiler`, `ContainerInterface`, `Resettable`, `ServiceProvider`, `Ref`, the `Attribute\*` classes, the `Exception\*` classes |
 | Routing | `Router`, `Route`, `RouteMatch`, `MatchResult`, `MatchStatus`, the `Attribute\*` classes, `Exception\RoutingException` |
-| HTTP | `Pipeline`, `CallableHandler`, `Responder`, `ArgumentResolver`, `Hydrator`, `EmitterInterface`, `SapiEmitter`, the `Attribute\*`, `Exception\*` and `Middleware\*` classes; from 1.4 `ServerTiming`, `EventStream`, `SseEvent`, `Stream\IteratorStream` |
+| HTTP | `Pipeline`, `CallableHandler`, `Responder`, `ArgumentResolver`, `Hydrator`, `EmitterInterface`, `SapiEmitter`, `RequestScoped`, the `Attribute\*`, `Exception\*` and `Middleware\*` classes; from 1.4 `ServerTiming`, `EventStream`, `SseEvent`, `Stream\IteratorStream` |
 | Validation | `Rule` and every rule attribute |
 | Kernel | `Kernel`, `ExceptionHandlerMiddleware`, `ProblemDetails`; from 1.4 `DeferredTasks` and the `Event\*` classes |
-| Runtime | `RuntimeInterface`, `Runtime`, `FpmRuntime`, `FrankenPhpRuntime`, `RoadRunnerRuntime`, `MemoryGuard`; from 1.4 `LoadSheddingMiddleware`, `LoadSheddingConfig`, `InFlightCounter` and its implementations |
+| Runtime | `RuntimeInterface`, `Runtime`, `FpmRuntime`, `FrankenPhpRuntime`, `RoadRunnerRuntime`, `MemoryGuard`, `GlobalsRequestCreator`; from 1.4 `LoadSheddingMiddleware`, `LoadSheddingConfig`, `InFlightCounter` and its implementations |
 | App | `App` (except `@internal` members), `Config\*`, `Discovery\DiscoveryInterface`, `Discoverer` and the built-in discoveries, `Event\*`, `Log\*`, `Session\*`, `Testing\*`, `Console\ConsoleFactory` |
 | Auth (1.1) | `Principal`, `Identity`, `Authenticator`, `PrincipalResolver`, `HmacSecrets`, `SecurityScheme`, the built-in authenticators, `Authentication`, `AuthMiddleware`, `AuthGuard`, `AuthConfig`, `Attribute\Auth` |
 | RateLimit (1.1) | `Attribute\RateLimit`, `RateLimiter`, `RateLimitResult`, `RateLimitGuard`, `CounterStorage` and its implementations |

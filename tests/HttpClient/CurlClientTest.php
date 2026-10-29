@@ -20,6 +20,7 @@ use Keel\Kernel\Kernel;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\ClientInterface;
@@ -220,6 +221,49 @@ final class CurlClientTest extends TestCase
 
         $this->expectException(RequestException::class);
         $parse->invoke($client, ["HTTP/1.1 200 OK\r\n", "Bad\x01Name: v\r\n"], '', $request);
+    }
+
+    #[Group('security')]
+    public function testConfiguredCredentialsStayWithTheOriginOfTheRequest(): void
+    {
+        $client = $this->client(new HttpClientConfig(headers: ['Authorization' => 'Bearer configured', 'X-Default' => 'd']));
+        $same = self::echoed((string) $client->sendRequest(new Request('GET', self::$base . '/redirect'))->getBody());
+        self::assertIsArray($same['headers']);
+        self::assertSame('Bearer configured', $same['headers']['authorization']);
+
+        $other = 'http://localhost:' . (string) parse_url(self::$base, \PHP_URL_PORT) . '/echo';
+        $crossOrigin = self::echoed((string) $client->sendRequest(new Request('GET', self::$base . '/redirect?to=' . rawurlencode($other)))->getBody());
+        self::assertIsArray($crossOrigin['headers']);
+        self::assertArrayNotHasKey('authorization', $crossOrigin['headers'], 'configured credentials are not sent to another origin');
+        self::assertSame('d', $crossOrigin['headers']['x-default']);
+    }
+
+    #[Group('security')]
+    public function testResponseSizeAndTimeAreBoundedAcrossRedirects(): void
+    {
+        $client = $this->client(new HttpClientConfig(timeout: 0.7, maxResponseSize: 1000));
+        self::assertSame(1000, strlen((string) $client->sendRequest(new Request('GET', self::$base . '/big?bytes=1000'))->getBody()));
+        try {
+            $client->sendRequest(new Request('GET', self::$base . '/big?bytes=5000'));
+            self::fail('a larger body is refused');
+        } catch (RequestException $e) {
+            self::assertStringContainsString('exceeds 1000 bytes', $e->getMessage());
+        }
+        self::assertSame(200, $client->sendRequest(new Request('GET', self::$base . '/echo'))->getStatusCode(), 'the client recovers');
+
+        // Three hops of 0.3 s each: every one fits the timeout, all of them do not.
+        $started = microtime(true);
+        try {
+            $client->sendRequest(new Request('GET', self::$base . '/slow?to=' . rawurlencode('/slow?to=/slow')));
+            self::fail('the timeout covers the redirects');
+        } catch (NetworkException $e) {
+            self::assertSame(\CURLE_OPERATION_TIMEDOUT, $e->getCode());
+            self::assertLessThan(0.85, microtime(true) - $started);
+        }
+        usleep(400_000); // php -S is single-threaded: let it finish the slow request
+
+        $this->expectException(\InvalidArgumentException::class);
+        new HttpClientConfig(timeout: 0.0); // curl would wait forever
     }
 
     public function testTimeoutAndConnectionFailuresAreNetworkExceptions(): void

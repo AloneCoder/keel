@@ -16,6 +16,7 @@ use Keel\Container\Exception\ContainerException;
 use Keel\Discovery\ServiceDiscovery;
 use Keel\Event\ListenerProvider;
 use Keel\Testing\TestClient;
+use Keel\Tests\App\Fixtures\ClockInstanceProvider;
 use Keel\Tests\App\Fixtures\NullLoggerProvider;
 use Keel\Tests\App\Fixtures\Project\Src\GreetingConfig;
 use Keel\Tests\App\Fixtures\Project\Src\GreetingLogInterface;
@@ -107,11 +108,32 @@ final class AppTest extends TestCase
 
     public function testInstanceThatCannotSurviveACachedBootIsRejectedWhenCompiling(): void
     {
+        $dir = sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/instance-project';
+        @mkdir($dir . '/src', 0o775, true);
+        @mkdir($dir . '/config', 0o775, true);
+        file_put_contents($dir . '/config/services.php', sprintf('<?php return new %s([%s::class]);', \Keel\Config\ServicesConfig::class, ClockInstanceProvider::class));
+
         $this->expectException(ContainerException::class);
         $this->expectExceptionMessage('Instances registered for "clock" cannot be restored on a cached boot');
-        App::boot(self::PROJECT, $this->env('prod', false), static function (Definitions $definitions): void {
+        App::boot($dir, $this->env('prod', false));
+    }
+
+    public function testDefinitionsFromTheConfigureClosureNeverReachTheContainerCache(): void
+    {
+        $env = $this->env('prod', false);
+        $app = App::boot(self::PROJECT, $env, static function (Definitions $definitions): void {
             $definitions->instance('clock', new \DateTimeImmutable('2026-01-01'));
+            $definitions->parameter('auth.bypass', true);
         });
+        self::assertInstanceOf(Container::class, $app->container, 'a configured boot gets a container of its own');
+        self::assertTrue($app->container->has('auth.bypass'));
+        self::assertFileDoesNotExist($this->cacheDir . '/container.php');
+
+        self::assertFalse(App::boot(self::PROJECT, $env)->container->has('auth.bypass'), 'a plain boot after it does not see the override');
+        self::assertFileExists($this->cacheDir . '/container.php');
+        self::assertTrue(App::boot(self::PROJECT, $env, static function (Definitions $definitions): void {
+            $definitions->parameter('auth.bypass', true);
+        })->container->has('auth.bypass'), 'nor does a warm cache swallow it');
     }
 
     public function testLoggerRegisteredUnderTheInterfaceIdIsNotShadowedByTheDefault(): void

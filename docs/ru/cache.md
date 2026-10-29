@@ -43,7 +43,7 @@ final class RatesService
 | `FileCache` | всех воркеров хоста | один сериализованный файл на запись, атомарная запись, просроченные удаляются при чтении и вероятностной уборкой (`sweep()` запускает её вручную и заодно убирает временные файлы, оставшиеся от упавшей записи) |
 | `ArrayCache` | только текущего процесса | тесты и мемоизация в пределах воркера |
 | `RedisCache` (`driver: 'redis'`) | всех воркеров на всех хостах | ext-redis через `RedisProvider` (ниже); значения сериализуются `serialize()`, так что держите инстанс приватным |
-| `MemcachedCache` (`driver: 'memcached'`) | всех воркеров на всех хостах | ext-memcached, `servers: ['host:11211']`; ключи длиннее 250 байт хэшируются; `clear()` сбрасывает весь инстанс |
+| `MemcachedCache` (`driver: 'memcached'`) | всех воркеров на всех хостах | ext-memcached, `servers: ['host:11211']`; ключи длиннее 250 байт или с пробелами хэшируются; неотвечающий сервер — это промах; `clear()` сбрасывает весь инстанс |
 
 Ключи по PSR-16: до 256 символов, без `{}()/\@:`; плохой ключ бросает `InvalidKeyException`
 (это `Psr\SimpleCache\InvalidArgumentException`). TTL — секунды или `DateInterval`;
@@ -111,7 +111,7 @@ public function update(int $id, #[FromBody] ProductPatch $patch, OutputCacheStor
 }
 ```
 
-Ключ — метод, хост и путь, плюс query (`varyByQuery: true` по умолчанию; `false` его игнорирует;
+Ключ — метод, схема, хост, порт и путь, плюс query (`varyByQuery: true` по умолчанию; `false` его игнорирует;
 список оставляет только эти параметры), перечисленные заголовки запроса и, с
 `varyByPrincipal: true`, principal. Теги могут ссылаться на плейсхолдеры маршрута
 (`product:{id}`). `invalidateTags()` выдаёт каждому тегу новую версию; сохранённый ответ помнит

@@ -29,9 +29,12 @@ final class AuthGuard implements MiddlewareInterface
 
         $match = $request->getAttribute(RouteMatch::class);
         $option = $match instanceof RouteMatch ? $match->route->option(Attribute\Auth::KEY) : null;
-        $roles = is_array($option) && is_array($option['roles'] ?? null) ? $option['roles'] : [];
-        if ($roles !== [] && !self::hasAny($principal, $roles)) {
-            throw new ForbiddenException('Insufficient role');
+        // One role of each set: the route's own and those of the enclosing #[Auth] declarations.
+        $sets = is_array($option) ? [$option['roles'] ?? [], ...(is_array($option['also'] ?? null) ? $option['also'] : [])] : [];
+        foreach ($sets as $roles) {
+            if (is_array($roles) && $roles !== [] && !self::hasAny($principal, $roles)) {
+                throw new ForbiddenException('Insufficient role');
+            }
         }
 
         return $handler->handle($request);

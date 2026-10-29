@@ -131,10 +131,15 @@ final class OutputCacheMiddleware implements MiddlewareInterface
             }
         }
 
+        // Scheme and port too: a response rendered for http:// or :8080 carries those in its links.
+        $uri = $request->getUri();
+
         return json_encode([
             $request->getMethod(),
-            $request->getUri()->getHost(),
-            $request->getUri()->getPath(),
+            $uri->getScheme(),
+            $uri->getHost(),
+            $uri->getPort(),
+            $uri->getPath(),
             $query,
             $headers,
             $principal,

@@ -132,6 +132,7 @@ final class MakeCommandsTest extends TestCase
         self::assertStringContainsString('#[Tag(HealthCheck::TAG)]', $check);
         self::assertStringContainsString("return 'redis_cluster';", $check);
         self::assertStringContainsString('final class RedisClusterCheck implements HealthCheck', $check);
+        self::assertStringContainsString('HealthResult::down($e->getMessage(), exception: $e)', $check, 'the message stays hidden unless exposeDetails');
 
         self::assertSame(0, $this->tester->run(['command' => 'keel:make:authenticator', 'name' => 'ApiTokens']));
         $resolver = (string) file_get_contents($this->project . '/src/Auth/ApiTokens.php');

@@ -325,11 +325,12 @@ final class SchemaBuilder
     }
 
     /**
-     * "/^[a-z]+$/" becomes "^[a-z]+$" (ECMA regex has no delimiters); other delimiters or flags stay as is.
+     * "/^[a-z]+$/" and "/^[a-z]+$/D" become "^[a-z]+$" (ECMA regex has no delimiters, and its "$"
+     * never accepts a trailing newline); other delimiters or flags stay as is.
      */
     private static function pattern(string $regex): string
     {
-        return preg_match('~^/(.*)/$~s', $regex, $m) === 1 ? $m[1] : $regex;
+        return preg_match('~^/(.*)/D?$~sD', $regex, $m) === 1 ? $m[1] : $regex;
     }
 
     /**

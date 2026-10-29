@@ -12,7 +12,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Route middleware added by #[Signed]: 403 unless the request URL carries a genuine, unexpired
- * signature from UrlSigner.
+ * signature from UrlSigner for the request's method.
  */
 final class SignedUrlGuard implements MiddlewareInterface
 {
@@ -20,7 +20,7 @@ final class SignedUrlGuard implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $refusal = match ($this->signer->status($request->getUri())) {
+        $refusal = match ($this->signer->status($request->getUri(), $request->getMethod())) {
             SignedUrlStatus::Valid => null,
             SignedUrlStatus::Missing => 'This URL must be signed',
             SignedUrlStatus::Invalid => 'Invalid URL signature',

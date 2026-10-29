@@ -11,6 +11,7 @@ use Keel\Idempotency\Attribute\Idempotent;
 use Keel\Routing\Attribute\Get;
 use Keel\Routing\Attribute\Post;
 use Keel\Session\Session;
+use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * Responses that belong to one client: what output caching and idempotency keys must not share.
@@ -35,6 +36,14 @@ final class PrivateController
     public function report(Principal $user): array
     {
         return ['report_for' => $user->id(), 'run' => ++self::$runs];
+    }
+
+    /** @return array<string, mixed> */
+    #[Get('/link')]
+    #[OutputCache]
+    public function link(ServerRequestInterface $request): array
+    {
+        return ['self' => (string) $request->getUri()->withQuery(''), 'run' => ++self::$runs];
     }
 
     /** @return array<string, mixed> */

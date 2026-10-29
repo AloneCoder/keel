@@ -75,17 +75,19 @@ final class RoutesCommand extends Command
     {
         $parts = [];
         if (is_array($option)) {
-            $roles = $option['roles'] ?? [];
-            $names = [];
-            foreach (is_array($roles) ? $roles : [] as $role) {
-                if (is_string($role)) {
-                    $names[] = $role;
+            // "admin|owner+editor": one of admin or owner, and editor.
+            $sets = [];
+            foreach ([$option['roles'] ?? [], ...(is_array($option['also'] ?? null) ? $option['also'] : [])] as $roles) {
+                $names = array_filter(is_array($roles) ? $roles : [], is_string(...));
+                if ($names !== []) {
+                    $sets[] = implode('|', $names);
                 }
             }
-            $parts[] = $names === [] ? 'yes' : implode('|', $names);
+            $parts[] = $sets === [] ? 'yes' : implode('+', $sets);
         }
         if (is_array($can) && is_string($can['ability'] ?? null)) {
-            $parts[] = 'can:' . $can['ability'];
+            $abilities = array_filter(is_array($can['also'] ?? null) ? $can['also'] : [], is_string(...));
+            $parts[] = 'can:' . implode('+', [...$abilities, $can['ability']]);
         }
 
         return implode(' ', $parts);

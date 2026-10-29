@@ -40,7 +40,7 @@ final class ArrayTranslator implements Translator, LocaleAware, Resettable
 
     public function trans(string $key, array $params = [], ?string $domain = null, ?string $locale = null): string
     {
-        $locale ??= $this->locale();
+        $locale = $this->supported($locale);
         $message = $this->lookup($key, $domain ?? $this->config->domain, $locale);
         if ($message === null) {
             return $key;
@@ -51,7 +51,16 @@ final class ArrayTranslator implements Translator, LocaleAware, Resettable
 
     public function has(string $key, ?string $domain = null, ?string $locale = null): bool
     {
-        return $this->lookup($key, $domain ?? $this->config->domain, $locale ?? $this->locale()) !== null;
+        return $this->lookup($key, $domain ?? $this->config->domain, $this->supported($locale)) !== null;
+    }
+
+    /**
+     * The current locale, or the supported one an explicit $locale maps to (the default when none
+     * does): catalogue paths and the per-locale cache only ever see the configured locales.
+     */
+    private function supported(?string $locale): string
+    {
+        return $locale === null ? $this->locale() : $this->config->match($locale) ?? $this->config->defaultLocale;
     }
 
     /**

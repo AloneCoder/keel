@@ -15,8 +15,9 @@ use Psr\Http\Message\UriInterface;
  *
  * The signature (CookieSigner with SignedUrlConfig::$purpose) covers the path and the whole query
  * string exactly as sent, expiry included, so no parameter can be added, removed, reordered or
- * changed. Scheme and host are not covered: the link is valid wherever the application receives
- * the same path. A link stays valid until it expires or the secret changes; to revoke single
+ * changed. A link signed for another method than GET (HEAD counts as GET) covers that method
+ * too, so a GET link never opens DELETE on the same path. Scheme and host are not covered: the
+ * link is valid wherever the application receives the same path. A link stays valid until it expires or the secret changes; to revoke single
  * links, put something revocable in them (a token, a version) and check it in the handler.
  */
 final class UrlSigner
@@ -42,20 +43,22 @@ final class UrlSigner
      *
      * @param array<string, scalar|\Stringable|null> $params
      * @param int|\DateTimeInterface|null            $expires seconds from now or a moment; null = SignedUrlConfig::$ttl
+     * @param string                                 $method  the method the link is for
      */
-    public function route(string $name, array $params = [], int|\DateTimeInterface|null $expires = null): string
+    public function route(string $name, array $params = [], int|\DateTimeInterface|null $expires = null, string $method = 'GET'): string
     {
         $router = $this->router ?? throw new \LogicException('UrlSigner::route() needs the Router; none is registered');
 
-        return $this->sign($router->generate($name, $params), $expires);
+        return $this->sign($router->generate($name, $params), $expires, $method);
     }
 
     /**
      * Signs a path as the application receives it, with an optional query ("/files/5?inline=1").
      *
      * @param int|\DateTimeInterface|null $expires seconds from now or a moment; null = SignedUrlConfig::$ttl
+     * @param string                      $method  the method the link is for
      */
-    public function sign(string $path, int|\DateTimeInterface|null $expires = null): string
+    public function sign(string $path, int|\DateTimeInterface|null $expires = null, string $method = 'GET'): string
     {
         if (!str_starts_with($path, '/') || str_starts_with($path, '//') || str_contains($path, '#')) {
             throw new \InvalidArgumentException(sprintf('UrlSigner signs a path with an optional query, such as "/files/5?inline=1"; got "%s"', $path));
@@ -72,7 +75,7 @@ final class UrlSigner
         if ($expiresAt !== null) {
             $query .= ($query === '' ? '' : '&') . self::EXPIRES . '=' . $expiresAt;
         }
-        $signature = $this->signer->signature($path . '?' . $query);
+        $signature = $this->signer->signature(self::payload($method, $path, $query));
         $query .= ($query === '' ? '' : '&') . self::SIGNATURE . '=' . $signature;
 
         return rtrim($this->config->baseUrl ?? '', '/') . $path . '?' . $query;
@@ -82,12 +85,12 @@ final class UrlSigner
      * Whether the link carries a genuine, unexpired signature: a request URI, a path with its query
      * or a full URL (SignedUrlConfig::$baseUrl in front of it is ignored).
      */
-    public function verify(UriInterface|string $url): bool
+    public function verify(UriInterface|string $url, string $method = 'GET'): bool
     {
-        return $this->status($url) === SignedUrlStatus::Valid;
+        return $this->status($url, $method) === SignedUrlStatus::Valid;
     }
 
-    public function status(UriInterface|string $url): SignedUrlStatus
+    public function status(UriInterface|string $url, string $method = 'GET'): SignedUrlStatus
     {
         [$path, $query] = $this->target($url);
         $signature = null;
@@ -114,7 +117,7 @@ final class UrlSigner
         if ($signature === null) {
             return SignedUrlStatus::Missing;
         }
-        if (!hash_equals($this->signer->signature($path . '?' . implode('&', $signed)), $signature)) {
+        if (!hash_equals($this->signer->signature(self::payload($method, $path, implode('&', $signed))), $signature)) {
             return SignedUrlStatus::Invalid;
         }
         if ($expires !== null && (!ctype_digit($expires) || (int) $expires <= $this->now())) {
@@ -122,6 +125,15 @@ final class UrlSigner
         }
 
         return SignedUrlStatus::Valid;
+    }
+
+    /**
+     * What is signed: path and query, preceded by the method unless it is GET or HEAD (links issued
+     * before methods were covered stay valid). A path starts with "/", so the two cannot collide.
+     */
+    private static function payload(string $method, string $path, string $query): string
+    {
+        return ($method === 'GET' || $method === 'HEAD' ? '' : $method . "\n") . $path . '?' . $query;
     }
 
     private function expiresAt(int|\DateTimeInterface|null $expires): ?int

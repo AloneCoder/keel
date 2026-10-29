@@ -29,6 +29,6 @@ final readonly class Alnum implements Rule
      */
     public function regex(): string
     {
-        return '/^[A-Za-z0-9' . preg_quote($this->allow, '/') . ']*$/';
+        return '/^[A-Za-z0-9' . preg_quote($this->allow, '/') . ']*$/D';
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Keel\Routing;
 
+use Keel\Routing\Attribute\CumulativeOption;
 use Keel\Routing\Attribute\MiddlewareProvider;
 use Keel\Routing\Attribute\Prefix;
 use Keel\Routing\Attribute\Redirect as RedirectAttribute;
@@ -47,7 +48,8 @@ final class RouteCollector
 
         $reflection = new \ReflectionClass($class);
         // Parent classes form the route groups: their prefixes are joined root-first, their
-        // middleware runs first, their options are overridden by the subclass.
+        // middleware runs first, their options are overridden by the subclass (requirements such as
+        // #[Auth] add up instead, see CumulativeOption).
         $prefixPath = '';
         $classMiddleware = [];
         $classOptions = [];
@@ -57,7 +59,7 @@ final class RouteCollector
                 $prefixPath = self::joinPrefix($prefixPath, $prefix[0]->newInstance()->path);
             }
             $classMiddleware = self::mergeMiddleware($classMiddleware, self::middlewareOf($ancestor));
-            $classOptions = self::optionsOf($ancestor) + $classOptions;
+            $classOptions = self::withOptionsOf($ancestor, $classOptions);
         }
 
         foreach ($reflection->getAttributes(RedirectAttribute::class) as $attribute) {
@@ -85,7 +87,7 @@ final class RouteCollector
 
             $status = $method->getAttributes(Status::class);
             $middleware = self::mergeMiddleware($classMiddleware, self::middlewareOf($method));
-            $options = self::optionsOf($method) + $classOptions;
+            $options = self::withOptionsOf($method, $classOptions);
             foreach ($attributes as $attribute) {
                 $route = $attribute->newInstance();
                 $this->add(new Route(
@@ -165,16 +167,21 @@ final class RouteCollector
     }
 
     /**
+     * $outer with the options $owner declares: each replaces the outer value of its key, except a
+     * CumulativeOption, which combines with it.
+     *
      * @param \ReflectionClass<object>|\ReflectionMethod $owner
+     * @param array<string, mixed>                     $outer
      *
      * @return array<string, mixed>
      */
-    private static function optionsOf(\ReflectionClass|\ReflectionMethod $owner): array
+    private static function withOptionsOf(\ReflectionClass|\ReflectionMethod $owner, array $outer): array
     {
-        $options = [];
+        $options = $outer;
         foreach ($owner->getAttributes(RouteOption::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
             $option = $attribute->newInstance();
-            $options[$option->key()] = $option->value();
+            $key = $option->key();
+            $options[$key] = $option instanceof CumulativeOption && array_key_exists($key, $outer) ? $option->combine($outer[$key]) : $option->value();
         }
 
         return $options;

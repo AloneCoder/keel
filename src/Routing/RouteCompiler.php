@@ -40,7 +40,7 @@ final class RouteCompiler
     {
         $static = [];
         $names = [];
-        /** @var array<string, list<array{0: int, 1: string, 2: list<string>}>> $dynamic */
+        /** @var array<string, list<array{0: int, 1: string, 2: list<string>, 3: array<int, string>}>> $dynamic */
         $dynamic = [];
         /** @var array<string, array<string, true>> $seenDynamic method => regex => true */
         $seenDynamic = [];
@@ -68,7 +68,7 @@ final class RouteCompiler
                             throw new RoutingException(sprintf('Dynamic route %s %s is declared twice (same pattern as an earlier route)', $method, $variant));
                         }
                         $seenDynamic[$method][$parsed['regex']] = true;
-                        $dynamic[$method][] = [$index, $parsed['regex'], $parsed['variables']];
+                        $dynamic[$method][] = [$index, $parsed['regex'], $parsed['variables'], self::checks($parsed['patterns'])];
                     }
                 }
             }
@@ -90,22 +90,42 @@ final class RouteCompiler
     }
 
     /**
-     * @param list<array{0: int, 1: string, 2: list<string>}> $entries
+     * @param list<array{0: int, 1: string, 2: list<string>, 3: array<int, string>}> $entries
      *
-     * @return array{regex: string, map: array<int, array{0: int, 1: list<string>}>}
+     * @return array{regex: string, map: array<int, array{0: int, 1: list<string>, 2: array<int, string>}>}
      */
     private function chunk(array $entries): array
     {
         $map = [];
         $alternatives = [];
         $groups = 0;
-        foreach ($entries as [$index, $regex, $variables]) {
+        foreach ($entries as [$index, $regex, $variables, $checks]) {
             $groups = max($groups, count($variables));
             $alternatives[] = $regex . str_repeat('()', $groups - count($variables));
             $groups++;
-            $map[$groups] = [$index, $variables];
+            $map[$groups] = [$index, $variables, $checks];
         }
 
-        return ['regex' => '~^(?|' . implode('|', $alternatives) . ')$~', 'map' => $map];
+        return ['regex' => '~^(?|' . implode('|', $alternatives) . ')$~D', 'map' => $map];
+    }
+
+    /**
+     * Placeholder position => the anchored constraint its decoded value must also satisfy. The
+     * default [^/]+ is left out: it keeps a segment whole, and "a%2Fb" is a value of one segment.
+     *
+     * @param list<string> $patterns
+     *
+     * @return array<int, string>
+     */
+    private static function checks(array $patterns): array
+    {
+        $checks = [];
+        foreach ($patterns as $position => $pattern) {
+            if ($pattern !== PathParser::DEFAULT_PATTERN) {
+                $checks[$position] = '~^(?:' . $pattern . ')$~D';
+            }
+        }
+
+        return $checks;
     }
 }

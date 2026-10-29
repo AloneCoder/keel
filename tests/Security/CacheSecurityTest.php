@@ -90,6 +90,15 @@ final class CacheSecurityTest extends TestCase
         self::assertNotSame($first['csrf'], $second['csrf']);
     }
 
+    public function testOutputCacheKeepsSchemesAndPortsApart(): void
+    {
+        $client = $this->client();
+        $client->get('http://app.test/link')->assertJson(['self' => 'http://app.test/link', 'run' => 1])->assertHeader('X-Cache', 'MISS');
+        $client->get('http://app.test:8080/link')->assertJson(['self' => 'http://app.test:8080/link', 'run' => 2]);
+        $client->get('https://app.test/link')->assertJson(['self' => 'https://app.test/link', 'run' => 3]);
+        $client->get('http://app.test/link')->assertJson(['run' => 1])->assertHeader('X-Cache', 'HIT');
+    }
+
     public function testIdempotencyKeysAreScopedToApiKeyPrincipals(): void
     {
         $client = $this->client();

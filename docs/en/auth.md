@@ -19,6 +19,9 @@ public function me(Principal $user): array { return ['id' => $user->id()]; }
 public function feed(?Principal $user = null): array { /* personalised when signed in */ }
 ```
 
+A principal never comes from the container: on an anonymous request `?AppUser $user = null` is
+`null`, not an autowired blank `AppUser`, and a required one fails.
+
 ## Authenticators
 
 An `Authenticator` recognises one credential scheme: it returns `null` when the request carries
@@ -126,7 +129,8 @@ With `jwksUrl` the keys are fetched through the PSR-18 client (load `HttpClientP
 in the worker for `jwksTtl` seconds (3600) and shared with the other workers through the PSR-16
 cache when one is registered. A token with an unknown `kid` triggers a refetch, at most once a
 minute, so a rotation is picked up without letting forged key ids hammer the provider. When a
-refetch fails the known keys stay in use; without any, the request fails with a 500, not a 401.
+refetch fails the known keys stay in use; without any, the request fails with a 500, not a 401,
+and the provider is asked again at most every 5 seconds.
 `publicKeys` (PEM, keyed by `kid`) and `secret` can be combined with `jwksUrl`.
 `$authenticator->verifier()->verify($token)` checks a token outside a request and returns its
 claims. `keel:install jwt` writes `config/jwt.php` and `config/auth.php`.
@@ -141,6 +145,10 @@ roles, one holding any of them:
 #[Auth('admin', 'support')]
 public function delete(int $id): void { /* ... */ }
 ```
+
+Declared on the class and again on a method (or on a parent and a subclass), both apply:
+`#[Auth('admin')]` on the class and `#[Auth('editor')]` on a method need both roles, and a bare
+`#[Auth]` on a method keeps the class's roles. It never loosens what the class requires.
 
 The attribute adds `AuthGuard` to the route. The guard uses the principal `AuthMiddleware` left
 on the request, or authenticates by itself when that middleware is not in the pipeline; without a
@@ -203,6 +211,7 @@ public function update(int $id, Principal $user, Gate $gate, #[FromBody] UpdateP
 For a decision the route parameters suffice for, `#[Can('post.update')]` on the method or the
 class adds `PolicyGuard`: it authenticates like `AuthGuard` (401 without a principal) and asks
 the gate with the route parameters as the subject (`['id' => '42']`), answering 403 on refusal.
+With `#[Can]` on the class and on a method, every ability is checked, the class's first.
 `keel:routes` shows the ability in the Auth column; the OpenAPI document gets `security` plus 401
 and 403, as with roles.
 

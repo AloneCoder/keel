@@ -34,6 +34,15 @@ if ($path === '/flaky') {
 }
 if ($path === '/slow') {
     usleep(300_000);
+    if (isset($_GET['to']) && is_string($_GET['to'])) {
+        header('Location: ' . $_GET['to'], true, 302);
+        exit;
+    }
+}
+if ($path === '/big') {
+    $bytes = $_GET['bytes'] ?? '0';
+    echo str_repeat('x', is_string($bytes) ? (int) $bytes : 0);
+    exit;
 }
 if ($path === '/status') {
     $code = $_GET['code'] ?? '500';
