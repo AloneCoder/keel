@@ -9,10 +9,13 @@ use Psr\Http\Message\UploadedFileInterface;
 /**
  * Files under one directory. Writes are atomic (temporary file, then rename); missing
  * directories are created with $directoryMode. With $baseUrl (the URL the web server serves
- * the root under) url() works.
+ * the root under) url() works, and names a PHP-capable web server would execute (.php, .phtml,
+ * .phar, "x.php.png") or read as configuration (.htaccess, .user.ini) cannot be written.
  */
 final class LocalStorage implements Storage
 {
+    private const string EXECUTABLE = '/\.(?:php\d*|phtml|pht|phar|phps)(?:\.|$)|^\.(?:htaccess|user\.ini)$/i';
+
     private readonly string $root;
 
     public function __construct(string $root, private readonly ?string $baseUrl = null, private readonly int $directoryMode = 0o755)
@@ -25,7 +28,7 @@ final class LocalStorage implements Storage
 
     public function write(string $path, mixed $contents): void
     {
-        $file = $this->file($path);
+        $file = $this->target($path);
         $this->prepare(dirname($file));
         $temporary = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
         $written = is_resource($contents)
@@ -42,7 +45,7 @@ final class LocalStorage implements Storage
         if ($file->getError() !== \UPLOAD_ERR_OK) {
             throw new StorageException(sprintf('Upload failed with error %d', $file->getError()));
         }
-        $target = $this->file($path);
+        $target = $this->target($path);
         $this->prepare(dirname($target));
         $file->moveTo($target);
     }
@@ -82,7 +85,7 @@ final class LocalStorage implements Storage
 
     public function move(string $from, string $to): void
     {
-        $target = $this->file($to);
+        $target = $this->target($to);
         $this->prepare(dirname($target));
         if (!@rename($this->existing($from), $target)) {
             throw new StorageException(sprintf('Cannot move "%s" to "%s"', $from, $to));
@@ -126,6 +129,20 @@ final class LocalStorage implements Storage
     private function file(string $path): string
     {
         return $this->root . '/' . Path::normalize($path);
+    }
+
+    /**
+     * A file to write. On a disk with a URL the web server serves the root, so names it would run
+     * (".php", also "x.php.png" for Apache's AddHandler) or obey (.htaccess, .user.ini) are refused.
+     */
+    private function target(string $path): string
+    {
+        $file = $this->file($path);
+        if ($this->baseUrl !== null && preg_match(self::EXECUTABLE, basename($file)) === 1) {
+            throw new StorageException(sprintf('Refusing to write "%s" to a public disk: the web server could execute it', $path));
+        }
+
+        return $file;
     }
 
     private function existing(string $path): string

@@ -11,6 +11,8 @@ use Keel\Auth\BearerTokenAuthenticator;
 use Keel\Auth\HmacAuthenticator;
 use Keel\Auth\HmacSecrets;
 use Keel\Auth\PrincipalResolver;
+use Keel\Config\Env;
+use Keel\Console\Install\Component;
 use Keel\Container\Definitions;
 use Keel\Kernel\Kernel;
 use Keel\RateLimit\CounterStorage;
@@ -19,6 +21,9 @@ use Keel\Testing\TestClient;
 use Keel\Tests\Auth\Fixtures\AccountController;
 use Keel\Tests\Auth\Fixtures\Tokens;
 use Keel\Tests\RateLimit\Fixtures\SearchController;
+use Nyholm\Psr7\ServerRequest;
+use Nyholm\Psr7\Stream;
+use Nyholm\Psr7\UploadedFile;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -30,14 +35,19 @@ use PHPUnit\Framework\TestCase;
 #[Group('security')]
 final class AuthSecurityTest extends TestCase
 {
-    private function client(): TestClient
+    private function kernel(): Kernel
     {
         $definitions = new Definitions();
         $definitions->set(Tokens::class)->alias(PrincipalResolver::class)->alias(HmacSecrets::class);
         $definitions->set(InMemoryCounters::class)->alias(CounterStorage::class);
         $definitions->instance(AuthConfig::class, new AuthConfig([BearerTokenAuthenticator::class, ApiKeyAuthenticator::class, HmacAuthenticator::class]));
 
-        return TestClient::forKernel(Kernel::build($definitions, [AccountController::class, SearchController::class], [AuthMiddleware::class]));
+        return Kernel::build($definitions, [AccountController::class, SearchController::class], [AuthMiddleware::class]);
+    }
+
+    private function client(): TestClient
+    {
+        return TestClient::forKernel($this->kernel());
     }
 
     /**
@@ -113,6 +123,49 @@ final class AuthSecurityTest extends TestCase
         $client->get('/search')->assertOk();
         $client->get('/search', ['X-Forwarded-For' => '1.2.3.4'])->assertStatus(429);
         $client->get('/search', ['X-Real-Ip' => '5.6.7.8'])->assertStatus(429);
+    }
+
+    public function testHmacRefusesFormAndMultipartBodiesItCannotCover(): void
+    {
+        $kernel = $this->kernel();
+        // What PHP-FPM hands over for multipart/form-data: php://input empty, fields and files parsed.
+        $header = HmacAuthenticator::sign('svc', 'top-secret', 'POST', '/ingest', '', time());
+        $multipart = new ServerRequest('POST', '/ingest', ['Authorization' => $header, 'Content-Type' => 'multipart/form-data; boundary=x']);
+
+        $fields = $kernel->handle($multipart->withParsedBody(['role' => 'admin', 'amount' => '1000000']));
+        self::assertSame(401, $fields->getStatusCode());
+        self::assertStringContainsString('not covered by the signature', (string) $fields->getBody());
+
+        $file = new UploadedFile(Stream::create('payload'), 7, \UPLOAD_ERR_OK, 'f.txt');
+        self::assertSame(401, $kernel->handle($multipart->withUploadedFiles(['f' => $file]))->getStatusCode());
+
+        // The empty body it was signed for still passes.
+        self::assertSame(200, $kernel->handle(new ServerRequest('POST', '/ingest', ['Authorization' => $header]))->getStatusCode());
+    }
+
+    public function testRateLimitCannotBeMultipliedByMethodSpellingOrHead(): void
+    {
+        $kernel = $this->kernel();
+        $client = TestClient::forKernel($kernel);
+        $client->get('/search')->assertOk();
+        $client->request('HEAD', '/search')->assertOk();
+        $client->get('/search')->assertStatus(429);
+        $client->request('HEAD', '/search')->assertStatus(429);
+        self::assertSame(405, $kernel->handle(new ServerRequest('get', '/search'))->getStatusCode());
+    }
+
+    public function testInstalledJwtConfigRequiresIssuerAndAudience(): void
+    {
+        $file = sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/jwt-' . bin2hex(random_bytes(4)) . '.php';
+        @mkdir(dirname($file), 0o700, true);
+        file_put_contents($file, Component::all()['jwt']->configs['jwt.php']);
+        $config = require $file;
+        self::assertInstanceOf(\Closure::class, $config);
+
+        // Without an audience a token the identity provider issued for any other client would pass.
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('JWT_AUDIENCE');
+        $config(new Env(['JWT_JWKS_URL' => 'https://idp.test/jwks', 'JWT_ISSUER' => 'https://idp.test/']));
     }
 
     public function testProblemBodiesDoNotLeakCredentials(): void

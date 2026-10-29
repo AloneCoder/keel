@@ -7,14 +7,16 @@ namespace Keel\Session;
 /**
  * One JSON file per session with a lazily run, probabilistic garbage collection of expired files.
  *
- * Files are 0600 in a 0700 directory. The directory may not be a symlink (a shared temp dir is
- * where another local user plants one). Concurrent requests of one session are not locked
- * against each other: the last write wins.
+ * Files are 0600 in a 0700 directory. The directory may not be a symlink, world-writable or owned
+ * by another user (a shared temp dir is where another local user plants one). Concurrent requests
+ * of one session are not locked against each other: the last write wins.
  */
 final class FileStorage implements SessionStorageInterface, SessionExpiry
 {
     /** Temporary files older than this are leftovers of a crashed write and collected by gc(). */
     public const int STALE_TEMPORARY = 60;
+
+    private bool $verified = false;
 
     public function __construct(private readonly string $directory, private readonly int $gcDivisor = 100) {}
 
@@ -85,6 +87,7 @@ final class FileStorage implements SessionStorageInterface, SessionExpiry
         if ($file === null || !is_file($file)) {
             return null;
         }
+        $this->verify();
 
         $decoded = json_decode((string) file_get_contents($file), true);
         if (!is_array($decoded) || !is_int($decoded['exp'] ?? null) || !is_array($decoded['data'] ?? null)) {
@@ -104,17 +107,45 @@ final class FileStorage implements SessionStorageInterface, SessionExpiry
 
     private function prepareDirectory(): void
     {
+        if (!is_dir($this->directory) && !is_link($this->directory)) {
+            if (!mkdir($this->directory, 0o700, true) && !is_dir($this->directory)) {
+                throw new \RuntimeException(sprintf('Cannot create session directory "%s"', $this->directory));
+            }
+            // mkdir's mode is subject to the umask; the directory holds session data, so insist on 0700.
+            @chmod($this->directory, 0o700);
+        }
+        $this->verify();
+    }
+
+    /**
+     * Refuses a directory someone else can write to: whoever plants sess_<id>.json decides what
+     * that session holds. A symlink, a world-writable directory and one owned by another user
+     * (root only when not group-writable) are refused, as FileCache does.
+     */
+    private function verify(): void
+    {
+        if ($this->verified) {
+            return;
+        }
         if (is_link($this->directory)) {
             throw new \RuntimeException(sprintf('Session directory "%s" is a symbolic link; refusing to write through it', $this->directory));
         }
-        if (is_dir($this->directory)) {
+        $mode = @fileperms($this->directory);
+        $owner = @fileowner($this->directory);
+        if ($mode === false || $owner === false) {
             return;
         }
-        if (!mkdir($this->directory, 0o700, true) && !is_dir($this->directory)) {
-            throw new \RuntimeException(sprintf('Cannot create session directory "%s"', $this->directory));
+        if (($mode & 0o002) !== 0 || ($owner !== self::uid() && ($owner !== 0 || ($mode & 0o020) !== 0))) {
+            throw new \RuntimeException(sprintf('Session directory "%s" is writable by everyone or owned by someone else; use a private directory', $this->directory));
         }
-        // mkdir's mode is subject to the umask; the directory holds session data, so insist on 0700.
-        @chmod($this->directory, 0o700);
+        $this->verified = true;
+    }
+
+    private static function uid(): int
+    {
+        $uid = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
+
+        return $uid === false ? -1 : $uid;
     }
 
     private function file(string $id): ?string

@@ -6,6 +6,52 @@ Until 1.0.0 minor versions may contain breaking changes.
 
 ## [Unreleased]
 
+### Security
+
+- **Cache**: `#[OutputCache]` served one client's stored response to others when the
+  credentials were not in `Authorization`. An `X-Api-Key` principal got another principal's copy,
+  a session page with its CSRF token reached anonymous visitors, and `#[OutputCache]` declared
+  before `#[Auth]` let anonymous requests skip the guard on a hit. Requests with credentials
+  (`Authorization`, `Cookie`, any attached principal) now bypass the cache unless the route varies
+  by principal. Routes whose `#[Auth]`, `#[Can]` or `#[Signed]` comes after the cache are never
+  served from it. Responses rendered while the session changed are not stored.
+- **Http**: `BodyLimitMiddleware` let a body of any size through when the request had neither
+  `Content-Length` nor `Transfer-Encoding`, which is what FrankenPHP hands over for chunked and
+  HTTP/2 uploads. A body of unknown size is now probed and limited.
+- **Http**: a JSON body inside the default 2M limit (`[[1],[1],...]`) decoded to over 100 MB and
+  killed the worker. `BodyParser` now answers 413 when its objects and arrays would not fit in
+  half of the memory left.
+- **Idempotency**: keys were shared by every client without a principal or an `Authorization`
+  header (API keys, sessions), so a replay skipped `#[Auth]` and could hand out another client's
+  session cookie. Keys are now scoped to the principal, which the middleware authenticates itself
+  when needed, else to the session, else to the `Authorization` and `Cookie` headers.
+  `Set-Cookie` is never stored or replayed.
+- **RateLimit**: `#[RateLimit]` could be multiplied by the spelling of the method (`post`, `pOsT`,
+  ...) and by `HEAD`, which had a bucket of its own.
+- **Auth**: `HmacAuthenticator` signs the raw body, which PHP leaves empty for
+  `multipart/form-data`. A header signed for an empty POST therefore carried any form fields and
+  files. Such requests are now refused with 401.
+- **Http**: a `*.example.com` entry in `TrustedHostsConfig` accepted `Host: evil.com?.example.com`
+  and the like (nginx passes `?`, `#` and `\`). Suffix matches now require a well-formed host name.
+- **Storage**: a `LocalStorage` disk with a URL refuses names a PHP-capable web server would
+  execute or obey: `.php`, `.phtml`, `.phar`, `x.php.png`, `.htaccess`, `.user.ini`. The upload
+  example in the docs took the extension from the client's file name; it now takes it from the
+  sniffed content.
+- **Cache**, **Session**: `FileCache` and the session `FileStorage` accepted a directory that
+  another local user created first (the default lives in the shared temp dir). That user could
+  plant serialized objects or session files. Both now refuse a directory owned by someone else
+  (root only when it is not group-writable); `FileStorage` also refuses a world-writable one.
+- **Console**: the config written by `keel:install jwt` left `JWT_ISSUER` and `JWT_AUDIENCE`
+  optional, so a token the identity provider issued for any other client was accepted. Both are
+  now required.
+
+### Changed
+
+- **Routing**: methods are matched case-sensitively (RFC 9110). `get` is no longer `GET` and gets
+  405, so nothing downstream keys a request by a spelling the route did not use.
+- **Auth**: `AuthMiddleware` keeps a principal an earlier middleware already attached instead of
+  authenticating again.
+
 ## [1.5.0] - 2026-10-22
 
 The second wave of the ecosystem survey: resilience for outgoing calls (Polly, SmallRye Fault

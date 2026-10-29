@@ -96,9 +96,9 @@ final readonly class Component
                 'http_client.php' => self::config(['Keel\HttpClient\HttpClientConfig'], 'new HttpClientConfig()'),
             ]),
             new self('jwt', 'JWT bearer authentication (shared secret, public keys or JWKS)', configs: [
-                'jwt.php' => self::config(['Keel\Auth\Jwt\JwtConfig', 'Keel\Config\Env'], "static fn(Env \$env): JwtConfig => new JwtConfig(algorithms: ['RS256'], jwksUrl: \$env->require('JWT_JWKS_URL'), issuer: \$env->get('JWT_ISSUER'), audience: \$env->get('JWT_AUDIENCE'))"),
+                'jwt.php' => self::config(['Keel\Auth\Jwt\JwtConfig', 'Keel\Config\Env'], "static fn(Env \$env): JwtConfig => new JwtConfig(algorithms: ['RS256'], jwksUrl: \$env->require('JWT_JWKS_URL'), issuer: \$env->require('JWT_ISSUER'), audience: \$env->require('JWT_AUDIENCE'))"),
                 'auth.php' => self::config(['Keel\Auth\AuthConfig', JwtAuthenticator::class], 'new AuthConfig([JwtAuthenticator::class])'),
-            ], requires: ['http-client', 'cache'], notes: 'Set JWT_JWKS_URL (and JWT_ISSUER / JWT_AUDIENCE), or switch config/jwt.php to a secret or public keys. An existing config/auth.php is kept: add JwtAuthenticator::class to it yourself.'),
+            ], requires: ['http-client', 'cache'], notes: 'Set JWT_JWKS_URL, JWT_ISSUER and JWT_AUDIENCE (without an audience a token your identity provider issued for any other client would pass), or switch config/jwt.php to a secret or public keys. An existing config/auth.php is kept: add JwtAuthenticator::class to it yourself.'),
             new self('signed-urls', 'Signed, expiring links (UrlSigner) for routes marked #[Signed]', configs: [
                 'signed_url.php' => self::config(['Keel\Auth\SignedUrlConfig', 'Keel\Config\Env'], "static fn(Env \$env): SignedUrlConfig => new SignedUrlConfig(\$env->require('APP_SECRET'), ttl: 86_400)"),
             ], notes: 'Set APP_SECRET (32+ random characters). Links come from UrlSigner::route(); links in emails need baseUrl in config/signed_url.php.'),

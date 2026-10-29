@@ -6,10 +6,15 @@ namespace Keel\Tests\Security;
 
 use Keel\Container\Definitions;
 use Keel\Http\CallableHandler;
+use Keel\Http\Exception\ContentTooLargeException;
+use Keel\Http\Exception\UnsupportedMediaTypeException;
+use Keel\Http\Middleware\BodyLimitConfig;
+use Keel\Http\Middleware\BodyLimitMiddleware;
 use Keel\Http\Middleware\CorsConfig;
 use Keel\Http\Middleware\CorsMiddleware;
 use Keel\Http\Middleware\MethodOverrideMiddleware;
 use Keel\Http\Middleware\RequestIdMiddleware;
+use Keel\Http\Middleware\TrustedHostsConfig;
 use Keel\Http\Middleware\TrustedProxiesConfig;
 use Keel\Http\Middleware\TrustedProxiesMiddleware;
 use Keel\Kernel\Kernel;
@@ -19,11 +24,15 @@ use Keel\Session\FileStorage;
 use Keel\Session\Session;
 use Keel\Session\SessionConfig;
 use Keel\Session\SessionMiddleware;
+use Keel\Storage\LocalStorage;
+use Keel\Storage\StorageException;
 use Keel\Testing\TestClient;
 use Keel\Tests\Kernel\Fixtures\Clock;
 use Keel\Tests\Kernel\Fixtures\UserController;
+use Keel\Tests\Security\Fixtures\UnsizedStream;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\ServerRequest;
+use Nyholm\Psr7\Stream;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -189,6 +198,91 @@ final class SecurityTest extends TestCase
         // Nested objects where scalars are expected never reach the DTO.
         $client->json('POST', '/api/users', ['name' => ['nested'], 'email' => ['x' => 'y']])
             ->assertProblem(400, 'Invalid request data', ['name: must be a string', 'email: must be a string']);
+    }
+
+    public function testJsonThatWouldExhaustMemoryIsRefusedBeforeDecoding(): void
+    {
+        $limit = (string) ini_get('memory_limit');
+        ini_set('memory_limit', (string) (memory_get_usage() + 32 * 1024 * 1024));
+        try {
+            // 800 KB that json_decode() would turn into about 50 MB of arrays.
+            $bomb = '[' . implode(',', array_fill(0, 200_000, '[1]')) . ']';
+            $this->client()->request('POST', '/api/users', ['Content-Type' => 'application/json'], $bomb)->assertProblem(413);
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
+    }
+
+    public function testBodyLimitHoldsWhenTheServerDropsContentLengthAndTransferEncoding(): void
+    {
+        $middleware = new BodyLimitMiddleware(new BodyLimitConfig(16, ['application/json']));
+        $handler = new CallableHandler(static function (ServerRequestInterface $r): ResponseInterface {
+            (string) $r->getBody();
+
+            return new Psr17Factory()->createResponse(200);
+        });
+        // FrankenPHP: a chunked or HTTP/2 upload reaches PHP with neither header, over php://input.
+        $body = static fn(string $contents): UnsizedStream => new UnsizedStream(Stream::create($contents));
+
+        try {
+            $middleware->process(new ServerRequest('PUT', '/', ['Content-Type' => 'application/json'], $body(str_repeat('x', 100))), $handler);
+            self::fail('an oversized body without Content-Length was read');
+        } catch (ContentTooLargeException) {
+        }
+        try {
+            $middleware->process(new ServerRequest('PUT', '/', ['Content-Type' => 'application/xml'], $body('<x/>')), $handler);
+            self::fail('a body without Content-Length skipped the media type check');
+        } catch (UnsupportedMediaTypeException) {
+        }
+        self::assertSame(200, $middleware->process(new ServerRequest('GET', '/', [], $body('')), $handler)->getStatusCode(), 'no body, no Content-Type: untouched');
+    }
+
+    public function testWildcardTrustedHostsAcceptOnlyWellFormedNames(): void
+    {
+        $config = new TrustedHostsConfig(['*.app.test']);
+        self::assertTrue($config->allows('tenant.app.test'));
+        self::assertTrue($config->allows('a.b.app.test'));
+        foreach (['evil.com?.app.test', 'evil.com#.app.test', 'evil.com\.app.test', 'evil.com/.app.test', 'evil.com@x.app.test', '.app.test', '-x.app.test'] as $host) {
+            self::assertFalse($config->allows($host), $host);
+        }
+    }
+
+    public function testMethodSpellingIsNotNormalised(): void
+    {
+        $definitions = new Definitions();
+        $definitions->set(Clock::class);
+        $kernel = Kernel::build($definitions, [UserController::class]);
+
+        self::assertSame(200, $kernel->handle(new ServerRequest('GET', '/api/users/1'))->getStatusCode());
+        self::assertSame(405, $kernel->handle(new ServerRequest('get', '/api/users/1'))->getStatusCode());
+        self::assertSame(405, $kernel->handle(new ServerRequest('Get', '/api/users/1'))->getStatusCode());
+    }
+
+    public function testPublicDiskRefusesNamesTheWebServerWouldExecute(): void
+    {
+        $root = sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/public-disk-' . bin2hex(random_bytes(4));
+        $public = new LocalStorage($root, '/uploads');
+        foreach (['a.php', 'avatars/42.PHTML', 'x.php.png', 'shell.phar', 'a.php5', '.htaccess', 'sub/.user.ini'] as $name) {
+            try {
+                $public->write($name, '<?php echo 1;');
+                self::fail($name . ' was written to a public disk');
+            } catch (StorageException) {
+                self::assertFileDoesNotExist($root . '/' . $name);
+            }
+        }
+
+        $public->write('avatars/42.png', 'png');
+        $public->write('photo.phpx', 'x');
+        self::assertTrue($public->exists('avatars/42.png'));
+        $this->expectException(StorageException::class);
+        $public->move('avatars/42.png', 'avatars/42.php');
+    }
+
+    public function testPrivateDiskWritesAnyName(): void
+    {
+        $private = new LocalStorage(sys_get_temp_dir() . '/keel-tests/' . getmypid() . '/private-disk-' . bin2hex(random_bytes(4)));
+        $private->write('generated.php', '<?php return [];');
+        self::assertTrue($private->exists('generated.php'));
     }
 
     public function testNoStateLeaksBetweenRequestsOfOneKernel(): void

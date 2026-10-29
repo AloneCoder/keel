@@ -36,19 +36,18 @@ final class BodyLimitMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        // A request without Content-Length or Transfer-Encoding has no body (RFC 9112 §6.3), unless
-        // the stream says otherwise (RoadRunner and tests hand over a body string).
         $length = $request->getHeaderLine('Content-Length');
-        $size = $request->getBody()->getSize();
-        if (!$request->hasHeader('Transfer-Encoding') && ($length === '' || $length === '0') && ($size === null || $size === 0)) {
+        $body = self::hasBody($request, $length);
+        if ($body === false) {
             return $handler->handle($request);
         }
+        $size = $request->getBody()->getSize();
         if (!ctype_digit($length) && $size !== null) {
             $length = (string) $size;
         }
 
         $policy = $this->policyFor($request);
-        if ($policy->contentTypes !== []) {
+        if ($body && $policy->contentTypes !== []) {
             $mediaType = strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'), 2)[0]));
             if (!$policy->accepts($mediaType)) {
                 throw new UnsupportedMediaTypeException(sprintf(
@@ -68,6 +67,33 @@ final class BodyLimitMiddleware implements MiddlewareInterface
         }
 
         return $handler->handle($request);
+    }
+
+    /**
+     * Whether the request has a body; null when it cannot tell, and then only the size limit
+     * applies. Without Content-Length or Transfer-Encoding there is none (RFC 9112 §6.3), but a
+     * server may drop both headers: Go's net/http (FrankenPHP) does for chunked HTTP/1.1 and for
+     * HTTP/2 without content-length. So a stream of unknown size (php://input) is probed for a
+     * first byte instead of trusting the headers.
+     */
+    private static function hasBody(ServerRequestInterface $request, string $length): ?bool
+    {
+        $stream = $request->getBody();
+        $size = $stream->getSize();
+        if ($request->hasHeader('Transfer-Encoding') || ($length !== '' && $length !== '0') || ($size !== null && $size > 0)) {
+            return true;
+        }
+        if ($size !== null || $length === '0') {
+            return false;
+        }
+        if (!$stream->isSeekable() || !$stream->isReadable()) {
+            return null;
+        }
+        $stream->rewind();
+        $first = $stream->read(1);
+        $stream->rewind();
+
+        return $first !== '';
     }
 
     private function policyFor(ServerRequestInterface $request): BodyLimitConfig

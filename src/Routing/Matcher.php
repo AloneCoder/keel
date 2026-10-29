@@ -12,11 +12,13 @@ final class Matcher
     public function __construct(private readonly CompiledRoutes $routes) {}
 
     /**
+     * Methods are case-sensitive (RFC 9110 §9.1): "post" is not POST and gets 405, so everything
+     * keyed by the method (rate limits, caches) sees the same spelling the route matched.
+     *
      * @param string $path raw (undecoded) request path; placeholders are decoded individually
      */
     public function match(string $method, string $path): MatchResult
     {
-        $method = strtoupper($method);
         $result = $this->matchMethod($method, $path);
         if ($result !== null) {
             return $result;

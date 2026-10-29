@@ -122,9 +122,13 @@ responses become stale rather than fresh again.
 Responses get `X-Cache: HIT` or `MISS` (`OutputCacheConfig::$header`, null for none) and, on a
 hit, `Age`. Only 200 responses are stored; never those that set a cookie, say
 `Cache-Control: no-store` or `private`, stream their body or exceed
-`OutputCacheConfig::$maxBodyBytes` (1 MiB). Requests with an `Authorization` header bypass the
-cache unless the route varies by principal and the principal is known by then: declare `#[Auth]`
-before `#[OutputCache]`. Without it such requests bypass the cache rather than share one copy.
+`OutputCacheConfig::$maxBodyBytes` (1 MiB), nor one rendered while the handler wrote to the
+session. Only anonymous requests share a stored copy: a request with credentials (an
+`Authorization` or `Cookie` header, as in Varnish's default, or a principal attached by any
+authenticator, `X-Api-Key` included) bypasses the cache unless the route varies by principal and
+the principal is known by then: declare `#[Auth]` before `#[OutputCache]`. A route whose `#[Auth]`,
+`#[Can]` or `#[Signed]` comes after `#[OutputCache]` (or sits on the method while the cache is on
+the class) is never served from the cache, since a hit would skip the guard.
 Unlike `#[CacheControl]`, which tells clients and proxies what to keep, this cache saves the work
 on the server.
 

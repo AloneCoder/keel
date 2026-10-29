@@ -350,7 +350,7 @@ return new TrustedHostsConfig(['api.example.com', '*.example.com']);
 
 A request for any other host gets 400 before routing, so a forged `Host` never ends up in
 generated URLs, redirects or password-reset links. `*.example.com` covers subdomains at any depth
-but not `example.com` itself; IP literals (`10.0.0.5`, `[::1]`) and `*` are allowed. The host is
+but not `example.com` itself, and only well-formed host names (`evil.com?.example.com` is not one); IP literals (`10.0.0.5`, `[::1]`) and `*` are allowed. The host is
 read from the request URI, after `TrustedProxiesMiddleware` applied a trusted `X-Forwarded-Host`.
 Probes that address a pod by its IP need that IP in the list, or `HealthMiddleware` earlier in
 `HttpConfig`.
@@ -368,7 +368,10 @@ public function upload(#[FromFile] UploadedFileInterface $avatar): array { /* ..
 
 A `Content-Length` above the limit is answered 413 before anything is read; a body without one
 (chunked) is wrapped so that reading past the limit throws 413 instead of filling the worker's
-memory. A body whose media type matches none of the patterns (exact, `type/*` or
+memory. A request with neither `Content-Length` nor `Transfer-Encoding` (FrankenPHP drops both for
+chunked and HTTP/2 uploads) has its body probed for a first byte rather than trusted to be empty.
+A JSON body is refused with 413 before decoding when its objects and arrays (a few hundred bytes
+each once decoded) would not fit in half of the memory left under `memory_limit`. A body whose media type matches none of the patterns (exact, `type/*` or
 `type/*+suffix`) gets 415. Requests without a body pass untouched. The global middleware reads
 the route's `#[BodyLimit]` with a cheap match before routing, so a route can raise the limit
 above the global one; a `null` argument keeps the global value. The attribute works without the
@@ -393,8 +396,10 @@ seconds. A retry with the same key and the same method, path, query and body get
 marked `Idempotent-Replayed: true`, without running the handler; the same key with a different
 request gets 422; a retry while the first is still running gets 409 with `Retry-After`. A request
 that failed (5xx or an exception) releases its key, so the retry runs. Keys are 1-255 visible
-ASCII characters (a quoted structured-field string is accepted) and are scoped to the principal,
-or else to the `Authorization` header: place the middleware after `AuthMiddleware`.
+ASCII characters (a quoted structured-field string is accepted) and are scoped to the principal
+(the middleware authenticates through `AuthConfig` itself when `AuthMiddleware` has not run yet),
+else to the session, else to the `Authorization` and `Cookie` headers. `Set-Cookie` is neither
+stored nor replayed.
 
 The lock is an atomic `CounterStorage` increment: APCu, Redis (`RedisConfig(use: ['counters'])`)
 or, without either, process memory, which only protects one worker. As global middleware it

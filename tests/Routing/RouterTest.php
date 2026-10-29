@@ -163,7 +163,17 @@ final class RouterTest extends TestCase
         $router = Router::fromControllers(UserController::class);
 
         self::assertSame(MatchStatus::Found, $router->match('HEAD', '/api/users/42')->status);
-        self::assertSame(MatchStatus::Found, $router->match('head', '/api/users/search')->status);
+        self::assertSame(MatchStatus::Found, $router->match('HEAD', '/api/users/search')->status);
+    }
+
+    public function testMethodsAreCaseSensitive(): void
+    {
+        $router = Router::fromControllers(UserController::class);
+
+        $result = $router->match('get', '/api/users/42');
+        self::assertSame(MatchStatus::MethodNotAllowed, $result->status);
+        self::assertContains('GET', $result->allowed);
+        self::assertSame(MatchStatus::MethodNotAllowed, $router->match('head', '/api/users/search')->status);
     }
 
     public function testChunkedRegexesMatchEveryRoute(): void

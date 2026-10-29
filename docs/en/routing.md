@@ -135,8 +135,9 @@ the order of the attributed methods in a controller, of the controllers passed t
 
 `Router::match($method, $path)` returns a `MatchResult` with status `Found` (a `RouteMatch`
 holding the route and the parameters), `NotFound` or `MethodNotAllowed` with the `allowed`
-list. `HEAD` without a route of its own is served by the `GET` route, and `allowed` (the `Allow`
-header of a 405) lists `HEAD` whenever it lists `GET`. An empty request path (PSR-7 allows it for
+list. Methods are case-sensitive (RFC 9110): `post` is not `POST` and gets 405. `HEAD` without
+a route of its own is served by the `GET` route (and counts against its `#[RateLimit]`), and
+`allowed` (the `Allow` header of a 405) lists `HEAD` whenever it lists `GET`. An empty request path (PSR-7 allows it for
 `http://host`) is routed as `/`.
 
 ## Cache

@@ -20,6 +20,11 @@ final class AuthMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        // A middleware before this one may have authenticated already (IdempotencyMiddleware does
+        // to scope its keys); a second pass would trip HMAC replay protection.
+        if (Authentication::principal($request) !== null) {
+            return $handler->handle($request);
+        }
         $principal = $this->authentication->authenticate($request);
 
         return $handler->handle($principal === null ? $request : Authentication::attach($request, $principal));

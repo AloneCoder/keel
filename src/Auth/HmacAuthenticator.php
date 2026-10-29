@@ -70,9 +70,16 @@ final class HmacAuthenticator implements Authenticator
         $uri = $request->getUri();
         $target = $uri->getPath() . ($uri->getQuery() !== '' ? '?' . $uri->getQuery() : '');
 
+        // PHP parses a multipart body into $_POST and $_FILES and leaves php://input empty, so the
+        // signature would cover none of it: a header signed for an empty POST would carry any form.
+        $body = (string) $request->getBody();
+        if ($body === '' && ($request->getUploadedFiles() !== [] || !in_array($request->getParsedBody(), [null, []], true))) {
+            throw $this->unauthorized('A form or multipart body is not covered by the signature; send it as the raw body');
+        }
+
         // An unknown key id gets the same answer, after the same work, as a wrong signature.
         $secret = $this->secrets->secretFor($keyId);
-        $expected = self::signature($secret ?? 'keel-unknown-key-id', $request->getMethod(), $target, (string) $request->getBody(), $timestamp);
+        $expected = self::signature($secret ?? 'keel-unknown-key-id', $request->getMethod(), $target, $body, $timestamp);
         if ($secret === null || !hash_equals($expected, $signature)) {
             throw $this->unauthorized('Invalid signature');
         }

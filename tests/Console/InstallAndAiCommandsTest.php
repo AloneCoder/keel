@@ -210,7 +210,7 @@ final class InstallAndAiCommandsTest extends TestCase
         }
 
         // The written files load: a fresh boot sees the provider and the middleware.
-        $app = App::boot($this->project, new Env(['APP_ENV' => 'dev', 'APP_DEBUG' => '1', 'JWT_JWKS_URL' => 'https://idp.test/jwks']));
+        $app = App::boot($this->project, new Env(['APP_ENV' => 'dev', 'APP_DEBUG' => '1', 'JWT_JWKS_URL' => 'https://idp.test/jwks', 'JWT_ISSUER' => 'https://idp.test/', 'JWT_AUDIENCE' => 'orders-api']));
         $services = $app->configs[ServicesConfig::class];
         self::assertInstanceOf(ServicesConfig::class, $services);
         self::assertSame(['Keel\HttpClient\HttpClientProvider', CacheProvider::class], $services->providers);

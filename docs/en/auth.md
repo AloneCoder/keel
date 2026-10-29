@@ -81,7 +81,9 @@ again with a fresh timestamp.
 A wrong signature and an unknown key id get the same answer, "Invalid signature", after the same
 amount of work, so key ids cannot be enumerated. Host and `Content-Type` are not part of the
 signed string: a signature is valid on every host that shares the secret, so never share HMAC
-secrets between environments.
+secrets between environments. Send the payload as the raw body (JSON, form-urlencoded): PHP
+parses a `multipart/form-data` body into `$_POST`/`$_FILES` and leaves nothing to sign, so such a
+request with no raw body but form fields or files is refused with 401.
 
 ### JWT
 

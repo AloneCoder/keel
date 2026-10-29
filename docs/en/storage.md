@@ -31,7 +31,8 @@ final class AvatarController
         Principal $user,
         #[FromFile, File(maxSize: '2M', mimeTypes: ['image/png', 'image/jpeg'])] UploadedFileInterface $avatar,
     ): array {
-        $path = sprintf('avatars/%s.%s', $user->id(), pathinfo((string) $avatar->getClientFilename(), PATHINFO_EXTENSION));
+        // the extension comes from the checked content, never from the client's file name
+        $path = sprintf('avatars/%s.%s', $user->id(), File::sniff($avatar) === 'image/png' ? 'png' : 'jpg');
         $this->disks->disk('public')->upload($avatar, $path);
 
         return ['url' => $this->disks->disk('public')->url($path)];
@@ -51,7 +52,11 @@ final class AvatarController
 
 Paths are relative and `/`-separated; `..`, absolute paths, drive letters and NUL bytes are
 refused (`StorageException`), so a path built from request data cannot leave the root. Missing
-directories are created on write.
+directories are created on write. A local disk with a `url` is served by the web server, so it
+refuses names the server could execute or obey: `.php`, `.phtml`, `.phar` (also inside a name,
+`x.php.png`, which Apache's `AddHandler` runs), `.htaccess` and `.user.ini`. Take the extension of
+an upload from its checked content (`File::sniff()`), never from the client's file name: a
+`.html` or `.svg` from a client is stored XSS on your own origin.
 
 `Storage` in the container is the default disk; `Disks::disk('name')` picks another. A
 Flysystem disk points at the container id of a `League\Flysystem\FilesystemOperator` you build

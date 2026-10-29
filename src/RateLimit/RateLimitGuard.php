@@ -51,7 +51,9 @@ final class RateLimitGuard implements MiddlewareInterface
         }
         $subject ??= 'ip:' . (TrustedProxiesMiddleware::clientIp($request) ?? 'unknown');
 
-        $key = $request->getMethod() . '|' . $match->route->path . '|' . $subject;
+        // HEAD served by a GET route counts against that route, not a bucket of its own.
+        $method = $request->getMethod() === 'HEAD' && !in_array('HEAD', $match->route->methods, true) ? 'GET' : $request->getMethod();
+        $key = $method . '|' . $match->route->path . '|' . $subject;
         $result = $this->limiter->hit($key, $option['limit'], $option['window']);
 
         $headers = [

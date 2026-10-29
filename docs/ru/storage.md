@@ -31,7 +31,8 @@ final class AvatarController
         Principal $user,
         #[FromFile, File(maxSize: '2M', mimeTypes: ['image/png', 'image/jpeg'])] UploadedFileInterface $avatar,
     ): array {
-        $path = sprintf('avatars/%s.%s', $user->id(), pathinfo((string) $avatar->getClientFilename(), PATHINFO_EXTENSION));
+        // расширение берётся из проверенного содержимого, а не из имени файла клиента
+        $path = sprintf('avatars/%s.%s', $user->id(), File::sniff($avatar) === 'image/png' ? 'png' : 'jpg');
         $this->disks->disk('public')->upload($avatar, $path);
 
         return ['url' => $this->disks->disk('public')->url($path)];
@@ -51,7 +52,12 @@ final class AvatarController
 
 Пути относительные, разделитель `/`; `..`, абсолютные пути, буквы дисков и NUL-байты
 отклоняются (`StorageException`), так что путь из данных запроса не выйдет за корень.
-Отсутствующие каталоги создаются при записи.
+Отсутствующие каталоги создаются при записи. Локальный диск с `url` раздаёт веб-сервер, поэтому
+он отказывается писать имена, которые сервер мог бы выполнить или прочитать как настройки:
+`.php`, `.phtml`, `.phar` (в том числе внутри имени, `x.php.png`, такое выполняет `AddHandler` в
+Apache), `.htaccess` и `.user.ini`. Расширение загрузки берите из проверенного содержимого
+(`File::sniff()`), а не из имени файла клиента: `.html` или `.svg` от клиента — это stored XSS
+на вашем же origin.
 
 `Storage` в контейнере — диск по умолчанию; `Disks::disk('name')` выбирает другой.
 Flysystem-диск указывает на id сервиса `League\Flysystem\FilesystemOperator`, который вы

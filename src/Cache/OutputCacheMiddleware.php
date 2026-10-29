@@ -5,8 +5,13 @@ declare(strict_types=1);
 namespace Keel\Cache;
 
 use Keel\Auth\Authentication;
+use Keel\Auth\AuthGuard;
+use Keel\Auth\PolicyGuard;
+use Keel\Auth\SignedUrlGuard;
 use Keel\Cache\Attribute\OutputCache;
+use Keel\Routing\Route;
 use Keel\Routing\RouteMatch;
+use Keel\Session\Session;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -19,13 +24,18 @@ use Psr\Http\Server\RequestHandlerInterface;
  * stored response is fresh and its tags were not invalidated, otherwise runs the handler and
  * stores a 200 response. Adds X-Cache: HIT or MISS (OutputCacheConfig::$header) and, on a hit, Age.
  *
- * Requests with an Authorization header bypass the cache unless the route varies by principal and
- * the principal is already known (#[Auth] declared before #[OutputCache]);
- * responses with Set-Cookie, Cache-Control no-store or private, a streamed body or a body above
- * OutputCacheConfig::$maxBodyBytes are not stored.
+ * Requests with credentials (an Authorization or Cookie header, or a principal already attached)
+ * bypass the cache unless the route varies by principal and the principal is known by then
+ * (#[Auth] declared before #[OutputCache]); so does every request on a route whose #[Auth], #[Can]
+ * or #[Signed] is declared after #[OutputCache]. Responses with Set-Cookie, Cache-Control no-store
+ * or private, a streamed body, a body above OutputCacheConfig::$maxBodyBytes, or written while the
+ * handler changed the session are not stored.
  */
 final class OutputCacheMiddleware implements MiddlewareInterface
 {
+    /** Route middleware that must run before a stored copy is served. */
+    private const array GUARDS = [AuthGuard::class, PolicyGuard::class, SignedUrlGuard::class];
+
     public function __construct(
         private readonly OutputCacheStore $store,
         private readonly ResponseFactoryInterface $responses,
@@ -40,11 +50,14 @@ final class OutputCacheMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        // Credentials without a principal to key by (no #[Auth] before #[OutputCache]) would let
-        // every user share one copy: such requests bypass the cache.
+        // A stored copy is shared by everyone with the same key: only anonymous requests may use
+        // it, or a known principal on a route that varies by principal. Credentials in any form
+        // (an Authorization header, cookies such as a session, a principal from X-Api-Key) and
+        // guards declared after #[OutputCache], which a hit would skip, bypass the cache.
         $principal = Authentication::principal($request)?->id();
         $byPrincipal = ($option['varyByPrincipal'] ?? false) === true;
-        if ($request->hasHeader('Authorization') && (!$byPrincipal || $principal === null)) {
+        $credentials = $principal !== null || $request->hasHeader('Authorization') || $request->hasHeader('Cookie') || $request->getCookieParams() !== [];
+        if (($credentials && (!$byPrincipal || $principal === null)) || self::guardedAfter($match->route)) {
             return $handler->handle($request);
         }
 
@@ -62,7 +75,10 @@ final class OutputCacheMiddleware implements MiddlewareInterface
         }
 
         $response = $handler->handle($request);
-        $body = $this->storable($response);
+        // A handler that wrote to the session (a CSRF token, a flash message) rendered something
+        // of that visitor's: SessionMiddleware adds the cookie only after this middleware.
+        $session = $request->getAttribute(Session::class);
+        $body = $session instanceof Session && $session->isChanged() ? null : $this->storable($response);
         if ($body !== null) {
             $headers = [];
             foreach ($response->getHeaders() as $name => $values) {
@@ -73,6 +89,25 @@ final class OutputCacheMiddleware implements MiddlewareInterface
         }
 
         return $header === null ? $response : $response->withHeader($header, 'MISS');
+    }
+
+    /**
+     * Whether a guard comes after this middleware on the route (#[OutputCache] declared before
+     * #[Auth], #[Can] or #[Signed], or on the class while the guard is on the method).
+     */
+    private static function guardedAfter(Route $route): bool
+    {
+        $cache = false;
+        foreach ($route->middleware as $entry) {
+            $class = is_array($entry) ? $entry[0] : $entry;
+            if ($class === self::class) {
+                $cache = true;
+            } elseif ($cache && in_array($class, self::GUARDS, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

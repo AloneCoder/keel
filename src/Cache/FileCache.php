@@ -9,8 +9,8 @@ namespace Keel\Cache;
  * on the host. Expired files are removed when read and by a probabilistic sweep on write.
  *
  * Entries are unserialized with every class allowed, so the directory must be private to the
- * user running the application: a directory that is a symlink, writable by others, or writable
- * by a group while owned by someone else is refused with a RuntimeException.
+ * user running the application: a directory that is a symlink, writable by others, or owned by
+ * another user (root only when not group-writable) is refused with a RuntimeException.
  */
 final class FileCache extends AbstractCache
 {
@@ -165,8 +165,11 @@ final class FileCache extends AbstractCache
         if (($mode & 0o002) !== 0) {
             throw new \RuntimeException(sprintf('Cache directory "%s" is writable by everyone; use a private directory', $this->directory));
         }
-        if (($mode & 0o020) !== 0 && @fileowner($this->directory) !== self::uid()) {
-            throw new \RuntimeException(sprintf('Cache directory "%s" is group-writable and owned by someone else; use a private directory', $this->directory));
+        // Its owner can write into it whatever the mode says: another user who created it first
+        // (a predictable name in a shared /tmp) would plant serialized objects.
+        $owner = @fileowner($this->directory);
+        if ($owner !== self::uid() && ($owner !== 0 || ($mode & 0o020) !== 0)) {
+            throw new \RuntimeException(sprintf('Cache directory "%s" is owned by someone else; use a private directory', $this->directory));
         }
         $this->verified = true;
     }

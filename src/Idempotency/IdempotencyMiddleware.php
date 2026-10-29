@@ -14,6 +14,7 @@ use Keel\RateLimit\CounterStorage;
 use Keel\RateLimit\InMemoryCounters;
 use Keel\Routing\RouteMatch;
 use Keel\Routing\Router;
+use Keel\Session\Session;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -36,9 +37,11 @@ use Psr\SimpleCache\CacheInterface;
  *     CounterStorage increment: APCu, Redis or process memory);
  *   - a key on a request that failed (5xx, an exception) is released, so a retry runs again.
  *
- * Keys are scoped to the authenticated principal, or else to the Authorization header, so one
- * client cannot replay another's response. A key is 1-255 visible ASCII characters; a quoted
- * structured-field string ("...") is accepted too. Streamed (non-seekable) responses are not stored.
+ * Keys are scoped to the principal (authenticated through Authentication when none is attached
+ * yet), else to the session, else to the Authorization and Cookie headers, so one client cannot
+ * replay another's response. Set-Cookie is neither stored nor replayed. A key is 1-255 visible
+ * ASCII characters; a quoted structured-field string ("...") is accepted too. Streamed
+ * (non-seekable) responses are not stored.
  *
  * As global middleware it applies IdempotencyConfig to POST and PATCH, merged with the
  * #[Idempotent] of the route the request is headed for; added by #[Idempotent] alone it applies
@@ -64,6 +67,7 @@ final class IdempotencyMiddleware implements MiddlewareInterface
         ?IdempotencyConfig $config = null,
         ?CounterStorage $locks = null,
         private readonly ?Router $router = null,
+        private readonly ?Authentication $authentication = null,
     ) {
         $this->config = $config ?? new IdempotencyConfig();
         $this->locks = $locks ?? (ApcuCounters::available() ? new ApcuCounters('keel:idem:') : new InMemoryCounters());
@@ -96,6 +100,14 @@ final class IdempotencyMiddleware implements MiddlewareInterface
             throw new BadRequestException(sprintf('%s must be 1-255 visible ASCII characters', $settings->header));
         }
 
+        // Authenticate here when nothing did before, so the key is scoped to the principal whatever
+        // header carries the credentials; the principal travels on, like RateLimitGuard's.
+        if (Authentication::principal($request) === null && $this->authentication !== null) {
+            $principal = $this->authentication->authenticate($request);
+            if ($principal !== null) {
+                $request = Authentication::attach($request, $principal);
+            }
+        }
         [$request, $body] = $this->readBody($request);
         $id = $settings->prefix . hash('xxh128', self::scope($request) . "\0" . $key);
         $fingerprint = hash('sha256', $method . ' ' . $request->getUri()->getPath() . '?' . $request->getUri()->getQuery() . "\n" . $body);
@@ -147,15 +159,25 @@ final class IdempotencyMiddleware implements MiddlewareInterface
         return $key === '' ? null : $key;
     }
 
+    /**
+     * Who the key belongs to: the principal, else the session, else the credentials and cookies
+     * the request carries; '' only for a request with none of them.
+     */
     private static function scope(ServerRequestInterface $request): string
     {
         $principal = Authentication::principal($request);
         if ($principal !== null) {
             return 'principal:' . $principal->id();
         }
-        $authorization = $request->getHeaderLine('Authorization');
+        $session = $request->getAttribute(Session::class);
+        if ($session instanceof Session && !$session->isNew()) {
+            return 'session:' . hash('sha256', $session->id());
+        }
+        $cookies = $request->getCookieParams();
+        ksort($cookies);
+        $credentials = [$request->getHeaderLine('Authorization'), $request->getHeaderLine('Cookie'), $cookies];
 
-        return $authorization === '' ? '' : 'authorization:' . hash('sha256', $authorization);
+        return $credentials === ['', '', []] ? '' : 'credentials:' . hash('sha256', serialize($credentials));
     }
 
     /**
@@ -193,7 +215,10 @@ final class IdempotencyMiddleware implements MiddlewareInterface
         $stream->rewind();
         $headers = [];
         foreach ($response->getHeaders() as $name => $values) {
-            $headers[(string) $name] = array_values(array_map(strval(...), $values));
+            // A cookie (a fresh session above all) belongs to the client that got it first.
+            if (strcasecmp((string) $name, 'Set-Cookie') !== 0) {
+                $headers[(string) $name] = array_values(array_map(strval(...), $values));
+            }
         }
 
         return ['fingerprint' => $fingerprint, 'status' => $status, 'reason' => $response->getReasonPhrase(), 'headers' => $headers, 'body' => $body];
@@ -209,7 +234,7 @@ final class IdempotencyMiddleware implements MiddlewareInterface
         $response = $this->factory->createResponse($status, $reason)
             ->withBody($this->factory->createStream(is_string($stored['body'] ?? null) ? $stored['body'] : ''));
         foreach (is_array($stored['headers'] ?? null) ? $stored['headers'] : [] as $name => $values) {
-            if (is_string($name) && is_array($values)) {
+            if (is_string($name) && is_array($values) && strcasecmp($name, 'Set-Cookie') !== 0) {
                 $response = $response->withHeader($name, array_values(array_filter($values, is_string(...))));
             }
         }

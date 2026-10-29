@@ -43,11 +43,21 @@ final readonly class TrustedHostsConfig
             if ($pattern === '*' || $pattern === $host) {
                 return true;
             }
-            if (str_starts_with($pattern, '*.') && str_ends_with($host, substr($pattern, 1))) {
+            // Only a well-formed name may match by suffix: "evil.com?.example.com" ends with
+            // ".example.com" too, and nginx passes "?", "#" and "\" through in Host.
+            if (str_starts_with($pattern, '*.') && str_ends_with($host, substr($pattern, 1)) && self::isHostname($host)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Labels of letters, digits and inner hyphens (RFC 1123), nothing else.
+     */
+    private static function isHostname(string $host): bool
+    {
+        return filter_var($host, \FILTER_VALIDATE_DOMAIN, \FILTER_FLAG_HOSTNAME) !== false;
     }
 }
