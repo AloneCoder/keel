@@ -6,6 +6,11 @@ Until 1.0.0 minor versions may contain breaking changes.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-29
+
+Fixes from a security review of 1.5.0; upgrading is recommended. Two behaviour changes come
+with them and are listed under Changed. No public method was removed or renamed.
+
 ### Security
 
 - **Cache**: `#[OutputCache]` served one client's stored response to others when the

@@ -6,7 +6,7 @@
 атрибутах с ограниченным discovery, компилируемые контейнер и роутер, и один и тот же код
 под php-fpm, FrankenPHP worker mode и RoadRunner.
 
-Статус: 1.5.0, API заморожен под семантическое версионирование. Сайт документации: https://alonecoder.github.io/keel/ru/ Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md) и дорожную карту ниже.
+Статус: 1.5.1, API заморожен под семантическое версионирование. Сайт документации: https://alonecoder.github.io/keel/ru/ Начать проект: `composer create-project keel/skeleton my-app`. См. [CHANGELOG.md](CHANGELOG.md) и дорожную карту ниже.
 
 - [Контейнер](docs/ru/container.md) · [English](docs/en/container.md)
 - [Роутинг](docs/ru/routing.md) · [English](docs/en/routing.md)
