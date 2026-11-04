@@ -21,6 +21,17 @@ final class BodyParser
     private const int CONTAINER_BYTES = 512;
 
     /**
+     * What the keys of an object may cost, in the square of their number. PHP's hash tables are not
+     * seeded, so keys chosen to collide ("0", "262144", "524288", ...) make each insert walk all
+     * the earlier ones: 2 MB of them decode for over 6 seconds. This budget keeps that to some
+     * hundredths of a second whatever the body limit: one object of 10,000 keys, or 100 of 1,000.
+     */
+    private const int MAX_KEY_COST = 100_000_000;
+
+    /** Keys of an object up to this many cost nothing: colliding or not, the work stays linear in the body. */
+    private const int FREE_KEYS = 128;
+
+    /**
      * @return array<string, mixed>
      */
     public function parse(ServerRequestInterface $request): array
@@ -39,6 +50,9 @@ final class BodyParser
             $containers = substr_count($raw, '[') + substr_count($raw, '{');
             if ($containers * self::CONTAINER_BYTES > self::memoryAvailable()) {
                 throw new ContentTooLargeException(sprintf('JSON body has too many objects and arrays (%d) to decode', $containers));
+            }
+            if (self::keysTooCostly($raw)) {
+                throw new ContentTooLargeException('JSON body has objects with too many keys to decode');
             }
 
             try {
@@ -59,6 +73,65 @@ final class BodyParser
 
         /** @var array<string, mixed> */
         return is_array($parsed) ? $parsed : [];
+    }
+
+    /**
+     * Walks the structure without decoding it and adds up the cost of the keys of each object.
+     * Malformed JSON may be misread here, which is harmless: json_decode() refuses it next.
+     */
+    private static function keysTooCostly(string $raw): bool
+    {
+        // Colons can only overcount the keys: with few of them no object reaches the budget.
+        if (substr_count($raw, ':') ** 2 <= self::MAX_KEY_COST) {
+            return false;
+        }
+
+        $length = strlen($raw);
+        /** @var list<int> $open keys so far of each open object */
+        $open = [];
+        $cost = 0;
+        $at = 0;
+        while (true) {
+            $at += strcspn($raw, '"{}', $at);
+            if ($at >= $length) {
+                return false;
+            }
+            $char = $raw[$at++];
+            if ($char === '{') {
+                $open[] = 0;
+                continue;
+            }
+            if ($char === '}') {
+                array_pop($open);
+                continue;
+            }
+
+            // A string: on to its closing quote, past escapes.
+            while (true) {
+                if ($at >= $length) {
+                    return false;
+                }
+                $at += strcspn($raw, '"\\', $at);
+                if ($at >= $length) {
+                    return false;
+                }
+                if ($raw[$at] === '"') {
+                    break;
+                }
+                $at += 2;
+            }
+            $at++;
+            $at += strspn($raw, " \t\n\r", $at);
+            if ($at < $length && $raw[$at] === ':' && $open !== []) {
+                $keys = ++$open[array_key_last($open)];
+                if ($keys > self::FREE_KEYS) {
+                    $cost += 2 * $keys - 1;
+                    if ($cost > self::MAX_KEY_COST) {
+                        return true;
+                    }
+                }
+            }
+        }
     }
 
     /**

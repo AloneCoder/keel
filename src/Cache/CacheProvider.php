@@ -27,7 +27,7 @@ final class CacheProvider implements ServiceProvider
 
         return match ($driver) {
             'apcu' => new ApcuCache($config->prefix, $config->defaultTtl),
-            'file' => new FileCache($config->directory ?? sys_get_temp_dir() . '/keel-cache/' . md5($config->prefix), $config->defaultTtl),
+            'file' => new FileCache($config->directory ?? sys_get_temp_dir() . '/keel-cache-' . md5($config->prefix), $config->defaultTtl),
             'array' => new ArrayCache($config->defaultTtl),
             'redis' => new RedisCache(
                 $redis ?? throw new \LogicException('Cache driver "redis" needs a \Redis connection: register RedisConfig and load RedisProvider'),

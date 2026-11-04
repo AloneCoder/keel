@@ -324,6 +324,10 @@ is skipped anyway).
 
 ### Security headers
 
+`SecurityHeadersMiddleware` also covers error responses: an exception passes by the code a
+middleware runs after the handler, so it registers on the request's `ErrorResponseHooks`, which the
+kernel's exception handler runs on the response it renders. Your own middleware can do the same.
+
 ```php
 // config/security_headers.php
 return SecurityHeadersConfig::api();   // JSON only: CSP "default-src 'none'; frame-ancestors 'none'"
@@ -373,7 +377,10 @@ A `Content-Length` above the limit is answered 413 before anything is read; a bo
 memory. A request with neither `Content-Length` nor `Transfer-Encoding` (FrankenPHP drops both for
 chunked and HTTP/2 uploads) has its body probed for a first byte rather than trusted to be empty.
 A JSON body is refused with 413 before decoding when its objects and arrays (a few hundred bytes
-each once decoded) would not fit in half of the memory left under `memory_limit`. A body whose media type matches none of the patterns (exact, `type/*` or
+each once decoded) would not fit in half of the memory left under `memory_limit`, or when its keys
+could take long to decode: more than 10,000 in one object, or as many spread over objects of more
+than 128 keys (PHP's hash tables are open to keys chosen to collide). A handler that really takes
+such a document reads the raw body and decodes it itself. A body whose media type matches none of the patterns (exact, `type/*` or
 `type/*+suffix`) gets 415. Requests without a body pass untouched. The global middleware reads
 the route's `#[BodyLimit]` with a cheap match before routing, so a route can raise the limit
 above the global one; a `null` argument keeps the global value. The attribute works without the

@@ -51,8 +51,9 @@ Keys follow PSR-16: up to 256 characters, none of `{}()/\@:`; a bad key throws
 
 **`FileCache` directory.** Entries are unserialized with every class allowed, so whoever can
 write to the directory can inject objects into your process. The driver creates a missing
-directory with mode `0700` and refuses one that is a symlink, writable by everyone, or
-group-writable while owned by another user (`RuntimeException`). Without `directory` the default
+directory with mode `0700` and refuses, on every access, one that is a symlink, writable by
+everyone, group-writable while owned by another user, or inside a world-writable directory without
+the sticky bit (`RuntimeException`). Without `directory` the default
 is a predictable path under the system temp dir: fine on a host that runs only your
 application, but on a shared machine set `directory` to a private path such as
 `$projectDir . '/var/cache/data'`.

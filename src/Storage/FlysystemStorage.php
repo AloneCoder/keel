@@ -12,7 +12,9 @@ use Psr\Http\Message\UploadedFileInterface;
 
 /**
  * A Storage over any league/flysystem filesystem (S3, SFTP, Google Cloud, in-memory, ...):
- * build the FilesystemOperator in a provider and point a DiskConfig at its service id.
+ * build the FilesystemOperator in a provider and point a DiskConfig at its service id. With a
+ * $baseUrl, names a web server would execute cannot be written (Path::isExecutable()), as on a
+ * LocalStorage: the local adapter behind a URL is just as exposed, and nothing tells the adapters apart.
  */
 final class FlysystemStorage implements Storage
 {
@@ -25,7 +27,7 @@ final class FlysystemStorage implements Storage
 
     public function write(string $path, mixed $contents): void
     {
-        $path = Path::normalize($path);
+        $path = $this->target($path);
         try {
             if (is_resource($contents)) {
                 $this->filesystem->writeStream($path, $contents);
@@ -97,7 +99,7 @@ final class FlysystemStorage implements Storage
     public function move(string $from, string $to): void
     {
         try {
-            $this->filesystem->move(Path::normalize($from), Path::normalize($to));
+            $this->filesystem->move(Path::normalize($from), $this->target($to));
         } catch (FilesystemException $e) {
             throw new StorageException(sprintf('Cannot move "%s" to "%s": %s', $from, $to, $e->getMessage()), 0, $e);
         }
@@ -128,5 +130,15 @@ final class FlysystemStorage implements Storage
         }
 
         return Path::url($this->baseUrl, Path::normalize($path));
+    }
+
+    private function target(string $path): string
+    {
+        $path = Path::normalize($path);
+        if ($this->baseUrl !== null && Path::isExecutable($path)) {
+            throw new StorageException(sprintf('Refusing to write "%s" to a public disk: the web server could execute it', $path));
+        }
+
+        return $path;
     }
 }

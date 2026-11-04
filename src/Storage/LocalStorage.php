@@ -9,13 +9,11 @@ use Psr\Http\Message\UploadedFileInterface;
 /**
  * Files under one directory. Writes are atomic (temporary file, then rename); missing
  * directories are created with $directoryMode. With $baseUrl (the URL the web server serves
- * the root under) url() works, and names a PHP-capable web server would execute (.php, .phtml,
- * .phar, "x.php.png") or read as configuration (.htaccess, .user.ini) cannot be written.
+ * the root under) url() works, and names a web server would execute (.php, .phtml, .phar,
+ * "x.php.png", .shtml, .cgi) or read as configuration (.htaccess, .user.ini) cannot be written.
  */
 final class LocalStorage implements Storage
 {
-    private const string EXECUTABLE = '/\.(?:php\d*|phtml|pht|phar|phps)(?:\.|$)|^\.(?:htaccess|user\.ini)$/i';
-
     private readonly string $root;
 
     public function __construct(string $root, private readonly ?string $baseUrl = null, private readonly int $directoryMode = 0o755)
@@ -133,12 +131,12 @@ final class LocalStorage implements Storage
 
     /**
      * A file to write. On a disk with a URL the web server serves the root, so names it would run
-     * (".php", also "x.php.png" for Apache's AddHandler) or obey (.htaccess, .user.ini) are refused.
+     * or obey are refused (Path::isExecutable()).
      */
     private function target(string $path): string
     {
         $file = $this->file($path);
-        if ($this->baseUrl !== null && preg_match(self::EXECUTABLE, basename($file)) === 1) {
+        if ($this->baseUrl !== null && Path::isExecutable($file)) {
             throw new StorageException(sprintf('Refusing to write "%s" to a public disk: the web server could execute it', $path));
         }
 

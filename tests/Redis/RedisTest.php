@@ -108,6 +108,9 @@ final class RedisTest extends TestCase
         $counters = RedisProvider::counters($redis, $config);
         self::assertSame(1, $counters->increment('k', 60));
         self::assertSame(2, $counters->increment('k', 60));
+        self::assertInstanceOf(RedisCounters::class, $counters);
+        self::assertSame(2, $counters->current('k'), 'reading does not count');
+        self::assertSame(0, $counters->current('never-set'));
         $redis->del($config->prefix . 'rl:k');
 
         $metrics = RedisProvider::metrics($redis, $config);

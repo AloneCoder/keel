@@ -50,7 +50,8 @@ final class GeoClient
   (unsupported scheme) implement the PSR-18 exception interfaces.
 - Redirects are followed up to `maxRedirects`, by the client itself rather than by curl, so they
   behave like a browser: 301, 302 and 303 turn a request with a body into a `GET` without one,
-  307 and 308 repeat the request as sent, `Authorization`, `Proxy-Authorization` and `Cookie`
+  307 and 308 repeat the request as sent, `Authorization`, `Proxy-Authorization`, `Cookie`,
+  `X-Api-Key`, `Api-Key`, `X-Auth-Token`, `X-Access-Token` and whatever `credentialHeaders` lists
   (the request's own and those in `headers`) are dropped when the target is another origin
   (scheme, host or port), relative `Location`
   values are resolved against the request URI, and only `http`/`https` targets are followed.

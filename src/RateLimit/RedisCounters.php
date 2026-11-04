@@ -9,7 +9,7 @@ namespace Keel\RateLimit;
  * first increment sets its expiry. Fails closed like ApcuCounters: when Redis cannot be
  * reached the result is PHP_INT_MAX and the limit reads as exhausted.
  */
-final class RedisCounters implements CounterStorage
+final class RedisCounters implements ReadableCounters
 {
     public function __construct(private readonly \Redis $redis, private readonly string $prefix = 'keel:rl:') {}
 
@@ -26,5 +26,16 @@ final class RedisCounters implements CounterStorage
         }
 
         return is_int($value) ? $value : \PHP_INT_MAX;
+    }
+
+    public function current(string $key): int
+    {
+        try {
+            $value = $this->redis->get($this->prefix . $key);
+        } catch (\RedisException) {
+            return \PHP_INT_MAX;
+        }
+
+        return is_numeric($value) ? (int) $value : 0;
     }
 }

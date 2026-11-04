@@ -37,10 +37,12 @@ final class CookieStorage implements SessionStorageInterface, SessionExpiry
 
     /**
      * @param array<string, mixed> $data
+     * @param string|null          $id   the session id, which travels with the data so that it stays
+     *                                   the same across requests; null = a new one
      */
-    public function encode(array $data, int $ttl): string
+    public function encode(array $data, int $ttl, ?string $id = null): string
     {
-        $value = $this->signer->sign(json_encode(['exp' => time() + $ttl, 'data' => $data], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES));
+        $value = $this->signer->sign(json_encode(['exp' => time() + $ttl, 'id' => $id ?? Session::generateId(), 'data' => $data], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES));
         if (strlen($value) > self::MAX_SIZE) {
             throw new \OverflowException(sprintf('Cookie session exceeds %d bytes; use file storage or store less', self::MAX_SIZE));
         }
@@ -51,7 +53,7 @@ final class CookieStorage implements SessionStorageInterface, SessionExpiry
     /**
      * The verified, unexpired payload of a cookie value.
      *
-     * @return array{exp: int, data: array<string, mixed>}|null
+     * @return array{exp: int, id: string|null, data: array<string, mixed>}|null id is null in a cookie of an earlier version
      */
     public function decode(string $cookie): ?array
     {
@@ -68,6 +70,8 @@ final class CookieStorage implements SessionStorageInterface, SessionExpiry
         /** @var array<string, mixed> $data */
         $data = $decoded['data'];
 
-        return ['exp' => $decoded['exp'], 'data' => $data];
+        $id = $decoded['id'] ?? null;
+
+        return ['exp' => $decoded['exp'], 'id' => is_string($id) ? $id : null, 'data' => $data];
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Keel\Session;
 
+use Keel\Http\ErrorResponseHooks;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -40,6 +41,9 @@ final class SessionMiddleware implements MiddlewareInterface
         $cookie = $cookies[$this->config->cookie] ?? null;
         [$session, $refresh] = $this->load(is_string($cookie) ? $cookie : null);
 
+        // A logout that ends in an exception still logs out: the rest of a failed request's changes is dropped.
+        ErrorResponseHooks::of($request)?->add(fn(ResponseInterface $response): ResponseInterface => $this->ended($session) ? $this->persist($session, false, $request, $response) : $response);
+
         $response = $handler->handle($request->withAttribute(Session::class, $session));
 
         return $this->persist($session, $refresh, $request, $response);
@@ -59,7 +63,7 @@ final class SessionMiddleware implements MiddlewareInterface
 
             return $payload === null
                 ? [new Session(Session::generateId()), false]
-                : [new Session(Session::generateId(), $payload['data'], false), $this->shouldRefresh($payload['exp'])];
+                : [new Session($payload['id'] ?? hash('sha1', $cookie), $payload['data'], false), $this->shouldRefresh($payload['exp'])];
         }
 
         $id = $this->signer->verify($cookie);
@@ -83,7 +87,7 @@ final class SessionMiddleware implements MiddlewareInterface
 
     private function persist(Session $session, bool $refresh, ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
     {
-        if ($session->isDestroyed() || ($session->isChanged() && $session->all() === [] && !$session->isNew())) {
+        if ($this->ended($session)) {
             if (!$this->storage instanceof CookieStorage) {
                 $this->storage->destroy($session->id());
                 if ($session->previousId() !== null) {
@@ -104,12 +108,17 @@ final class SessionMiddleware implements MiddlewareInterface
         }
 
         if ($this->storage instanceof CookieStorage) {
-            return $response->withAddedHeader('Set-Cookie', $this->cookie($this->storage->encode($session->all(), $this->config->ttl), $request, $this->config->ttl));
+            return $response->withAddedHeader('Set-Cookie', $this->cookie($this->storage->encode($session->all(), $this->config->ttl, $session->id()), $request, $this->config->ttl));
         }
 
         $this->storage->write($session->id(), $session->all(), $this->config->ttl);
 
         return $response->withAddedHeader('Set-Cookie', $this->cookie($this->signer->sign($session->id()), $request, $this->config->ttl));
+    }
+
+    private function ended(Session $session): bool
+    {
+        return $session->isDestroyed() || ($session->isChanged() && $session->all() === [] && !$session->isNew());
     }
 
     private function cookie(string $value, ServerRequestInterface $request, int $maxAge): string

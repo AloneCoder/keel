@@ -12,6 +12,19 @@ namespace Keel\Storage;
  */
 final class Path
 {
+    private const string EXECUTABLE = '/\.(?:php\d*|phtml?|pht|phar|phps|shtml?|cgi)(?:\.|$)|^\.(?:htaccess|user\.ini)$/i';
+
+    /**
+     * Whether a web server serving this file might run it (".php", also "x.php.png" for Apache's
+     * AddHandler) or obey it (.htaccess, .user.ini). Disks with a public URL refuse such names.
+     * Not .html or .svg: they run in the visitor's browser, which is for the application to rule
+     * out (#[File] with an allowlist, a separate domain for user uploads).
+     */
+    public static function isExecutable(string $path): bool
+    {
+        return preg_match(self::EXECUTABLE, basename(str_replace('\\', '/', $path))) === 1;
+    }
+
     public static function normalize(string $path): string
     {
         if (str_contains($path, "\0")) {

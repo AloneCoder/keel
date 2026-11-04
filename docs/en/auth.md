@@ -238,8 +238,13 @@ Counters are keyed by HTTP method, route pattern and subject (`GET|/search|ip:20
 `GET|/mine|principal:u1`), so two methods on one path and an IP that looks like a principal id
 never share a bucket. With `by: 'principal'` the guard authenticates the request itself when no
 principal was attached yet (no `AuthMiddleware`, or `#[Auth]` declared after `#[RateLimit]`):
-a request with credentials is always counted per principal, invalid credentials get 401, and
-only a truly anonymous request falls back to the IP.
+a request with credentials is always counted per principal, and only a truly anonymous request
+falls back to the IP. Refused credentials get 401 and count in a bucket of their own per IP with the
+same limit. Once it is used up, that IP gets 429 for the rest of the window before any credentials
+are looked at, valid ones included, so a right guess looks like a wrong one. This needs a
+`ReadableCounters` storage, as all the built-in ones are. A refusal earlier in the pipeline never
+reaches the guard: with `AuthMiddleware`, or `#[Auth]` declared before `#[RateLimit]`, it answers
+401 uncounted.
 
 Counters live in a `CounterStorage`: APCu when the extension is loaded (shared by every worker of
 the server), otherwise the memory of the current process. `RedisCounters` puts them on Redis

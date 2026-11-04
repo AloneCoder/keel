@@ -10,7 +10,7 @@ use Psr\Clock\ClockInterface;
  * Counters in the memory of the current process: per worker, lost on restart. Right for tests
  * and single-worker setups; use ApcuCounters or your own store otherwise.
  */
-final class InMemoryCounters implements CounterStorage
+final class InMemoryCounters implements ReadableCounters
 {
     private const int PRUNE_ABOVE = 10_000;
 
@@ -44,6 +44,14 @@ final class InMemoryCounters implements CounterStorage
         }
 
         return ++$this->counters[$key][0];
+    }
+
+    public function current(string $key): int
+    {
+        $counter = $this->counters[$key] ?? null;
+        $now = $this->clock?->now()->getTimestamp() ?? time();
+
+        return $counter === null || $counter[1] <= $now ? 0 : $counter[0];
     }
 
     public function clear(): void

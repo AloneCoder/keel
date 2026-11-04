@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Keel\Kernel;
 
+use Keel\Http\ErrorResponseHooks;
 use Keel\Http\Responder;
 use Keel\Kernel\Event\ExceptionRaised;
 use Keel\Kernel\Event\RequestReceived;
@@ -19,6 +20,7 @@ use Psr\Log\LoggerInterface;
  * (application/problem+json) or as an HTML page when the client prefers text/html.
  * Server errors (5xx) are logged; in debug mode the payload carries the exception.
  * With a container it also dispatches the RequestReceived and ExceptionRaised lifecycle events.
+ * Middleware that must still touch an error response registers on the request's ErrorResponseHooks.
  */
 final class ExceptionHandlerMiddleware implements MiddlewareInterface
 {
@@ -38,12 +40,23 @@ final class ExceptionHandlerMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        $hooks = new ErrorResponseHooks();
+        $request = $request->withAttribute(ErrorResponseHooks::class, $hooks);
         try {
             $this->lifecycle?->dispatch(new RequestReceived($request));
 
             return $handler->handle($request);
         } catch (\Throwable $exception) {
-            return $this->render($exception, $request);
+            $response = $this->render($exception, $request);
+            foreach ($hooks->all() as $hook) {
+                try {
+                    $response = $hook($response);
+                } catch (\Throwable $failure) {
+                    $this->logger()?->critical('An error response hook failed: ' . $failure->getMessage(), ['exception' => $failure]);
+                }
+            }
+
+            return $response;
         }
     }
 

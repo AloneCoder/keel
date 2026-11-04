@@ -31,6 +31,8 @@ final class ApcuCountersTest extends TestCase
 
         self::assertSame(1, $counters->increment('fresh', 60), 'a key that does not exist yet is created, never read as exhausted');
         self::assertSame(2, $counters->increment('fresh', 60));
+        self::assertSame(2, $counters->current('fresh'), 'reading does not count');
+        self::assertSame(0, $counters->current('never-set'));
         $info = apcu_key_info('keel-test:fresh');
         self::assertIsArray($info);
         self::assertSame(60, $info['ttl'] ?? null);

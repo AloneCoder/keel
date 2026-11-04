@@ -14,6 +14,10 @@ final class RedisStorage implements SessionStorageInterface, SessionExpiry
 
     public function read(string $id): ?array
     {
+        // A signed cookie need not hold an id (one from the cookie storage, say): no such session.
+        if (!self::valid($id)) {
+            return null;
+        }
         $raw = $this->redis->get($this->key($id));
         if (!is_string($raw)) {
             return null;
@@ -34,11 +38,16 @@ final class RedisStorage implements SessionStorageInterface, SessionExpiry
 
     public function destroy(string $id): void
     {
-        $this->redis->del($this->key($id));
+        if (self::valid($id)) {
+            $this->redis->del($this->key($id));
+        }
     }
 
     public function expiresAt(string $id): ?int
     {
+        if (!self::valid($id)) {
+            return null;
+        }
         $ttl = $this->redis->ttl($this->key($id));
 
         return is_int($ttl) && $ttl > 0 ? time() + $ttl : null;
@@ -46,10 +55,15 @@ final class RedisStorage implements SessionStorageInterface, SessionExpiry
 
     private function key(string $id): string
     {
-        if (preg_match('/^[a-f0-9]{40}$/', $id) !== 1) {
+        if (!self::valid($id)) {
             throw new \InvalidArgumentException('Invalid session id');
         }
 
         return $this->prefix . $id;
+    }
+
+    private static function valid(string $id): bool
+    {
+        return preg_match('/^[a-f0-9]{40}$/D', $id) === 1;
     }
 }

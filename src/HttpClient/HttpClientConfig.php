@@ -19,6 +19,9 @@ final readonly class HttpClientConfig
      * @param RetryConfig|null          $retry           repeat requests after transient failures (RetryingClient)
      * @param CircuitBreakerConfig|null $circuitBreaker  stop calling a host that keeps failing (CircuitBreakerClient)
      * @param int|null                  $maxResponseSize bytes of response body buffered at most; null = no limit
+     * @param list<string>              $credentialHeaders further headers that stay with the origin of the request when a
+     *                                                     redirect leaves it, on top of Authorization, Proxy-Authorization,
+     *                                                     Cookie, X-Api-Key, Api-Key, X-Auth-Token and X-Access-Token
      *
      * @throws \InvalidArgumentException when a timeout is not above 0 (curl would read 0 as "never")
      */
@@ -33,6 +36,7 @@ final readonly class HttpClientConfig
         public ?RetryConfig $retry = null,
         public ?CircuitBreakerConfig $circuitBreaker = null,
         public ?int $maxResponseSize = 32 * 1024 * 1024,
+        public array $credentialHeaders = [],
     ) {
         if (!($timeout > 0) || !($connectTimeout > 0)) {
             throw new \InvalidArgumentException(sprintf('HTTP client timeouts must be above 0 seconds, got %s and %s', $timeout, $connectTimeout));

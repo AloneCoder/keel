@@ -7,7 +7,7 @@ namespace Keel\RateLimit;
 /**
  * Counters in APCu: shared by every php-fpm child or FrankenPHP thread of the server.
  */
-final class ApcuCounters implements CounterStorage
+final class ApcuCounters implements ReadableCounters
 {
     public function __construct(private readonly string $prefix = 'keel:rl:')
     {
@@ -31,5 +31,12 @@ final class ApcuCounters implements CounterStorage
         $value = apcu_inc($this->prefix . $key, 1, $success, $ttl);
 
         return $success && is_int($value) ? $value : \PHP_INT_MAX;
+    }
+
+    public function current(string $key): int
+    {
+        $value = apcu_fetch($this->prefix . $key);
+
+        return is_int($value) ? $value : 0;
     }
 }

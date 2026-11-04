@@ -4,6 +4,51 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
+## [Unreleased]
+
+The findings of the 1.6.0 security review.
+
+### Security
+
+- **Http**: a JSON body with keys chosen to collide in PHP's hash tables kept a worker busy for over
+  6 seconds per request within the default 2 MB limit, and quadratically longer above it.
+  `BodyParser` now answers 413 before decoding when the keys of its objects exceed a budget: one
+  object of 10,000 keys, or 100 of 1,000; objects up to 128 keys cost nothing.
+- **Idempotency**: `Idempotency-Key` did nothing under the default cookie session, because the id
+  the key was scoped to changed on every request, so a retry ran the handler again (since 1.5.1).
+  A cookie session now keeps its id in the cookie until `regenerate()`.
+- **Idempotency**: the fingerprint left out multipart fields and files, which PHP keeps out of the
+  raw body, so another form under the same key got the old response instead of 422.
+- **RateLimit**: `#[RateLimit(by: 'principal')]` never counted refused credentials, so guessing
+  tokens was unlimited. They now count in a bucket of their own per IP; once it is used up the guard
+  answers 429 before looking at credentials, so a right guess looks like a wrong one. All built-in
+  counters support this through the new `ReadableCounters`; a custom `CounterStorage` has to
+  implement it too.
+- **HttpClient**: `X-Api-Key`, `Api-Key`, `X-Auth-Token` and `X-Access-Token` followed a redirect to
+  another origin. They now stay behind like `Authorization`; `HttpClientConfig::$credentialHeaders`
+  adds your own.
+- **Http**: an exception skipped what a middleware does after the handler, so error responses had
+  no security headers and a logout that ended in an exception left the session alive. Both are
+  applied now, through the new `ErrorResponseHooks`. Other writes of a failed request stay dropped.
+- **Cache, Session**: `FileCache` and `FileStorage` checked their directory once per worker and
+  never its parent, so a directory swapped later was trusted, and `FileCache` unserializes with every
+  class allowed. They now check on every access and refuse a parent that is world-writable without
+  the sticky bit. The default `FileCache` directory moved to `<temp>/keel-cache-<hash>`.
+- **Storage**: `FlysystemStorage` with a URL accepted executable names, unlike `LocalStorage`. Both
+  now refuse them, and the list gained `.phtm`, `.shtml`, `.shtm` and `.cgi`.
+- **Session**: `RedisStorage` answered 500 to a validly signed cookie that holds no session id, such
+  as one left from the cookie storage. It now starts a new session.
+
+### Changed
+
+- With `#[RateLimit(by: 'principal')]`, an IP that used up its refused attempts gets 429 for the
+  rest of the window, even with a valid token.
+- A public `FlysystemStorage` refuses `.php` and the like on every adapter, S3 included.
+- A `FileCache` or `FileStorage` directory inside a world-writable parent without the sticky bit
+  now raises `RuntimeException`.
+- Cookie sessions grow by about 50 bytes (the id), which counts against the 4,000-byte limit.
+  Cookies written by earlier versions stay valid.
+
 ## [1.6.0] - 2026-11-04
 
 The low-severity findings of the 1.5.0 security review; upgrading is recommended. Run

@@ -20,6 +20,7 @@ use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\SimpleCache\CacheInterface;
@@ -32,7 +33,8 @@ use Psr\SimpleCache\CacheInterface;
  *     in the PSR-16 cache for $ttl seconds;
  *   - a repeat with the same key and the same request gets the stored response, marked
  *     Idempotent-Replayed: true, without running the handler;
- *   - the same key with a different method, path, query or body: 422;
+ *   - the same key with a different method, path, query or body (form fields and uploaded files
+ *     included): 422;
  *   - a repeat while the first is still running: 409 with Retry-After (the lock is an atomic
  *     CounterStorage increment: APCu, Redis or process memory);
  *   - a key on a request that failed (5xx, an exception) is released, so a retry runs again.
@@ -110,7 +112,7 @@ final class IdempotencyMiddleware implements MiddlewareInterface
         }
         [$request, $body] = $this->readBody($request);
         $id = $settings->prefix . hash('xxh128', self::scope($request) . "\0" . $key);
-        $fingerprint = hash('sha256', $method . ' ' . $request->getUri()->getPath() . '?' . $request->getUri()->getQuery() . "\n" . $body);
+        $fingerprint = hash('sha256', $method . ' ' . $request->getUri()->getPath() . '?' . $request->getUri()->getQuery() . "\n" . $body . ($body === '' ? self::form($request) : ''));
 
         $stored = $this->cache->get($id);
         if (is_array($stored) && is_string($stored['fingerprint'] ?? null)) {
@@ -178,6 +180,41 @@ final class IdempotencyMiddleware implements MiddlewareInterface
         $credentials = [$request->getHeaderLine('Authorization'), $request->getHeaderLine('Cookie'), $cookies];
 
         return $credentials === ['', '', []] ? '' : 'credentials:' . hash('sha256', serialize($credentials));
+    }
+
+    /**
+     * What a multipart body holds: PHP parses it into $_POST and $_FILES and leaves php://input
+     * empty, so the raw body says nothing about it. Empty when there is no form.
+     */
+    private static function form(ServerRequestInterface $request): string
+    {
+        $fields = $request->getParsedBody();
+        $files = [];
+        $uploads = $request->getUploadedFiles();
+        array_walk_recursive($uploads, static function (mixed $file, int|string $name) use (&$files): void {
+            if ($file instanceof UploadedFileInterface) {
+                $files[] = [$name, $file->getClientFilename(), $file->getSize(), $file->getError() === \UPLOAD_ERR_OK ? self::digest($file) : null];
+            }
+        });
+
+        return !is_array($fields) || $fields === [] ? ($files === [] ? '' : serialize($files)) : serialize([$fields, $files]);
+    }
+
+    private static function digest(UploadedFileInterface $file): string
+    {
+        $stream = $file->getStream();
+        if ($stream->isSeekable()) {
+            $stream->rewind();
+        }
+        $context = hash_init('sha256');
+        while (!$stream->eof()) {
+            hash_update($context, $stream->read(65_536));
+        }
+        if ($stream->isSeekable()) {
+            $stream->rewind();
+        }
+
+        return hash_final($context);
     }
 
     /**

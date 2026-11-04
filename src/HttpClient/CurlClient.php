@@ -19,7 +19,8 @@ use Psr\Http\Message\UriInterface;
  *
  * Redirects are followed by the client itself, hop by hop, within one timeout: 301, 302 and 303
  * turn a request with a body into a GET without one, 307 and 308 repeat the request as is, and
- * credentials (Authorization, Proxy-Authorization, Cookie), the request's own as well as those in
+ * credentials (Authorization, Proxy-Authorization, Cookie, the usual API key headers and
+ * HttpClientConfig::$credentialHeaders), the request's own as well as those in
  * HttpClientConfig::$headers, are dropped when the target is another origin. Only http and https
  * targets are followed.
  */
@@ -27,7 +28,7 @@ final class CurlClient implements ClientInterface
 {
     private const array REDIRECTS = [301, 302, 303, 307, 308];
 
-    private const array CREDENTIALS = ['Authorization', 'Proxy-Authorization', 'Cookie'];
+    private const array CREDENTIALS = ['Authorization', 'Proxy-Authorization', 'Cookie', 'X-Api-Key', 'Api-Key', 'X-Auth-Token', 'X-Access-Token'];
 
     private readonly HttpClientConfig $config;
 
@@ -132,7 +133,7 @@ final class CurlClient implements ClientInterface
         $headers = [];
         $sameOrigin = self::origin($request->getUri()) === self::origin($original->getUri());
         foreach ($this->config->headers as $name => $value) {
-            if (!$request->hasHeader($name) && ($sameOrigin || !self::isCredential($name))) {
+            if (!$request->hasHeader($name) && ($sameOrigin || !$this->isCredential($name))) {
                 $headers[] = $name . ': ' . $value;
             }
         }
@@ -201,7 +202,7 @@ final class CurlClient implements ClientInterface
             }
         }
         if (self::origin($request->getUri()) !== self::origin($target)) {
-            foreach (self::CREDENTIALS as $header) {
+            foreach ([...self::CREDENTIALS, ...$this->config->credentialHeaders] as $header) {
                 $next = $next->withoutHeader($header);
             }
         }
@@ -209,9 +210,9 @@ final class CurlClient implements ClientInterface
         return $next;
     }
 
-    private static function isCredential(string $header): bool
+    private function isCredential(string $header): bool
     {
-        foreach (self::CREDENTIALS as $credential) {
+        foreach ([...self::CREDENTIALS, ...$this->config->credentialHeaders] as $credential) {
             if (strcasecmp($header, $credential) === 0) {
                 return true;
             }

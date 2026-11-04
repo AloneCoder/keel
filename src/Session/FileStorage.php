@@ -7,16 +7,16 @@ namespace Keel\Session;
 /**
  * One JSON file per session with a lazily run, probabilistic garbage collection of expired files.
  *
- * Files are 0600 in a 0700 directory. The directory may not be a symlink, world-writable or owned
- * by another user (a shared temp dir is where another local user plants one). Concurrent requests
- * of one session are not locked against each other: the last write wins.
+ * Files are 0600 in a 0700 directory. The directory may not be a symlink, world-writable, owned
+ * by another user or inside a world-writable directory without the sticky bit (a shared temp dir is
+ * where another local user plants one), and that is checked on every access, as it can be swapped
+ * while a worker runs. Concurrent requests of one session are not locked against each other: the
+ * last write wins.
  */
 final class FileStorage implements SessionStorageInterface, SessionExpiry
 {
     /** Temporary files older than this are leftovers of a crashed write and collected by gc(). */
     public const int STALE_TEMPORARY = 60;
-
-    private bool $verified = false;
 
     public function __construct(private readonly string $directory, private readonly int $gcDivisor = 100) {}
 
@@ -124,9 +124,6 @@ final class FileStorage implements SessionStorageInterface, SessionExpiry
      */
     private function verify(): void
     {
-        if ($this->verified) {
-            return;
-        }
         if (is_link($this->directory)) {
             throw new \RuntimeException(sprintf('Session directory "%s" is a symbolic link; refusing to write through it', $this->directory));
         }
@@ -138,7 +135,10 @@ final class FileStorage implements SessionStorageInterface, SessionExpiry
         if (($mode & 0o002) !== 0 || ($owner !== self::uid() && ($owner !== 0 || ($mode & 0o020) !== 0))) {
             throw new \RuntimeException(sprintf('Session directory "%s" is writable by everyone or owned by someone else; use a private directory', $this->directory));
         }
-        $this->verified = true;
+        $parent = @fileperms(dirname($this->directory));
+        if ($parent !== false && ($parent & 0o002) !== 0 && ($parent & 0o1000) === 0) {
+            throw new \RuntimeException(sprintf('Session directory "%s" is inside a directory anyone can rename it in; use a private directory', $this->directory));
+        }
     }
 
     private static function uid(): int

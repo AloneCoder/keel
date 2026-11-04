@@ -9,15 +9,14 @@ namespace Keel\Cache;
  * on the host. Expired files are removed when read and by a probabilistic sweep on write.
  *
  * Entries are unserialized with every class allowed, so the directory must be private to the
- * user running the application: a directory that is a symlink, writable by others, or owned by
- * another user (root only when not group-writable) is refused with a RuntimeException.
+ * user running the application: a directory that is a symlink, writable by others, owned by
+ * another user (root only when not group-writable) or inside a world-writable directory without the
+ * sticky bit is refused with a RuntimeException, on every access, as it can be swapped while a worker runs.
  */
 final class FileCache extends AbstractCache
 {
     /** Temporary files older than this many seconds are leftovers of a crashed write. */
     private const int STALE_TEMPORARY = 60;
-
-    private bool $verified = false;
 
     public function __construct(
         private readonly string $directory,
@@ -152,9 +151,6 @@ final class FileCache extends AbstractCache
      */
     private function verify(): void
     {
-        if ($this->verified) {
-            return;
-        }
         if (is_link($this->directory)) {
             throw new \RuntimeException(sprintf('Cache directory "%s" is a symlink', $this->directory));
         }
@@ -171,7 +167,11 @@ final class FileCache extends AbstractCache
         if ($owner !== self::uid() && ($owner !== 0 || ($mode & 0o020) !== 0)) {
             throw new \RuntimeException(sprintf('Cache directory "%s" is owned by someone else; use a private directory', $this->directory));
         }
-        $this->verified = true;
+        // Whoever can rename entries of the parent can replace this directory, whatever its own mode.
+        $parent = @fileperms(dirname($this->directory));
+        if ($parent !== false && ($parent & 0o002) !== 0 && ($parent & 0o1000) === 0) {
+            throw new \RuntimeException(sprintf('Cache directory "%s" is inside a directory anyone can rename it in; use a private directory', $this->directory));
+        }
     }
 
     private static function uid(): int

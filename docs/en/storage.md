@@ -52,9 +52,10 @@ final class AvatarController
 
 Paths are relative and `/`-separated; `..`, absolute paths, drive letters and NUL bytes are
 refused (`StorageException`), so a path built from request data cannot leave the root. Missing
-directories are created on write. A local disk with a `url` is served by the web server, so it
-refuses names the server could execute or obey: `.php`, `.phtml`, `.phar` (also inside a name,
-`x.php.png`, which Apache's `AddHandler` runs), `.htaccess` and `.user.ini`. Take the extension of
+directories are created on write. A disk with a `url` may be served by the web server, so it
+refuses names the server could execute or obey, whatever the driver: `.php`, `.phtml`, `.phtm`,
+`.phar` (also inside a name, `x.php.png`, which Apache's `AddHandler` runs), `.shtml`, `.cgi`,
+`.htaccess` and `.user.ini`. Take the extension of
 an upload from its checked content (`File::sniff()`), never from the client's file name: a
 `.html` or `.svg` from a client is stored XSS on your own origin.
 

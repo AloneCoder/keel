@@ -161,7 +161,7 @@ final class CurlClientTest extends TestCase
 
     public function testRedirectsChangeTheMethodAndDropCredentialsLikeABrowser(): void
     {
-        $headers = ['Authorization' => 'Bearer secret', 'Cookie' => 'sid=1', 'X-Api-Key' => 'k', 'Content-Type' => 'text/plain'];
+        $headers = ['Authorization' => 'Bearer secret', 'Cookie' => 'sid=1', 'X-Api-Key' => 'k', 'X-Trace' => 't', 'Content-Type' => 'text/plain'];
 
         $seeOther = self::echoed((string) $this->client()->sendRequest(new Request('POST', self::$base . '/redirect?to=/echo%3Fhop%3D1&code=303', $headers, 'payload'))->getBody());
         self::assertSame('GET', $seeOther['method'], '303 turns a POST into a GET');
@@ -189,7 +189,8 @@ final class CurlClientTest extends TestCase
         self::assertIsArray($crossOrigin['headers']);
         self::assertArrayNotHasKey('authorization', $crossOrigin['headers'], 'Authorization is not sent to another origin');
         self::assertArrayNotHasKey('cookie', $crossOrigin['headers']);
-        self::assertSame('k', $crossOrigin['headers']['x-api-key'], 'other headers travel with the request');
+        self::assertArrayNotHasKey('x-api-key', $crossOrigin['headers'], 'API key headers are credentials too');
+        self::assertSame('t', $crossOrigin['headers']['x-trace'], 'other headers travel with the request');
 
         $ftp = $this->client()->sendRequest(new Request('GET', self::$base . '/redirect?to=' . rawurlencode('ftp://example.test/file')));
         self::assertSame(302, $ftp->getStatusCode(), 'only http(s) targets are followed');
@@ -236,6 +237,26 @@ final class CurlClientTest extends TestCase
         self::assertIsArray($crossOrigin['headers']);
         self::assertArrayNotHasKey('authorization', $crossOrigin['headers'], 'configured credentials are not sent to another origin');
         self::assertSame('d', $crossOrigin['headers']['x-default']);
+    }
+
+    #[Group('security')]
+    public function testCustomCredentialHeadersStayWithTheOriginOfTheRequest(): void
+    {
+        $client = $this->client(new HttpClientConfig(headers: ['X-Api-Key' => 'configured', 'X-Partner-Secret' => 'p1'], credentialHeaders: ['X-Partner-Secret', 'X-Tenant-Secret']));
+        $request = new Request('GET', self::$base . '/redirect?to=', ['X-Tenant-Secret' => 't1', 'X-Auth-Token' => 'a1']);
+
+        $same = self::echoed((string) $client->sendRequest($request->withUri($request->getUri()->withQuery('')))->getBody());
+        self::assertIsArray($same['headers']);
+        self::assertSame('configured', $same['headers']['x-api-key']);
+        self::assertSame('p1', $same['headers']['x-partner-secret']);
+        self::assertSame('t1', $same['headers']['x-tenant-secret']);
+
+        $other = 'http://localhost:' . (string) parse_url(self::$base, \PHP_URL_PORT) . '/echo';
+        $crossOrigin = self::echoed((string) $client->sendRequest($request->withUri($request->getUri()->withQuery('to=' . rawurlencode($other))))->getBody());
+        self::assertIsArray($crossOrigin['headers']);
+        foreach (['x-api-key', 'x-partner-secret', 'x-tenant-secret', 'x-auth-token'] as $header) {
+            self::assertArrayNotHasKey($header, $crossOrigin['headers'], $header . ' is not sent to another origin');
+        }
     }
 
     #[Group('security')]

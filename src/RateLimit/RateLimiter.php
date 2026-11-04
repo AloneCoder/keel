@@ -34,4 +34,21 @@ final class RateLimiter
 
         return new RateLimitResult($count <= $limit, $limit, max(0, $limit - $count), $start + $window - $now);
     }
+
+    /**
+     * The refusal, without counting a hit, when the key has no hits left in this window. Always null
+     * on a storage that cannot be read (see ReadableCounters).
+     */
+    public function exhausted(string $key, int $limit, int $window): ?RateLimitResult
+    {
+        if (!$this->storage instanceof ReadableCounters) {
+            return null;
+        }
+        $now = $this->clock?->now()->getTimestamp() ?? time();
+        $start = intdiv($now, $window) * $window;
+
+        return $this->storage->current($key . ':' . $start) >= $limit
+            ? new RateLimitResult(false, $limit, 0, $start + $window - $now)
+            : null;
+    }
 }
