@@ -203,7 +203,10 @@ final class SecurityTest extends TestCase
     public function testJsonThatWouldExhaustMemoryIsRefusedBeforeDecoding(): void
     {
         $limit = (string) ini_get('memory_limit');
-        ini_set('memory_limit', (string) (memory_get_usage() + 32 * 1024 * 1024));
+        // From what PHP really holds: earlier tests can leave it far above memory_get_usage(), and a
+        // limit below it is refused, which would leave the test running under the old limit.
+        gc_mem_caches();
+        self::assertNotFalse(ini_set('memory_limit', (string) (memory_get_usage(true) + 32 * 1024 * 1024)));
         try {
             // 800 KB that json_decode() would turn into about 50 MB of arrays.
             $bomb = '[' . implode(',', array_fill(0, 200_000, '[1]')) . ']';
