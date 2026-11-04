@@ -4,9 +4,11 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
-## [Unreleased]
+## [1.7.0] - 2026-11-05
 
-The findings of the 1.6.0 security review.
+The findings of the 1.6.0 security review; upgrading is recommended, above all if you use
+`Idempotency-Key` with cookie sessions or accept JSON on public routes. The behaviour changes are
+listed under Changed. No public method was removed or renamed.
 
 ### Security
 
