@@ -4,9 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 Until 1.0.0 minor versions may contain breaking changes.
 
-## [Unreleased]
+## [1.6.0] - 2026-11-04
 
-The low-severity findings of the 1.5.0 security review.
+The low-severity findings of the 1.5.0 security review; upgrading is recommended. Run
+`keel:compile` after upgrading: the cumulative `#[Auth]`/`#[Can]` and the decoded-value checks
+live in the compiled routes, so an old `routes.php` keeps the old behaviour. The behaviour changes
+are listed under Changed. No public method was removed or renamed.
 
 ### Security
 
@@ -62,12 +65,20 @@ The low-severity findings of the 1.5.0 security review.
 
 - **Auth**: `#[Auth]` and `#[Can]` declared on a class and on a method add up instead of the
   method's replacing the class's. The route option then carries an `also` list.
+- **Http**: a required parameter typed with a `Principal` class fails on a request without a
+  principal instead of receiving a blank object; make it nullable to allow anonymous requests.
+- **Runtime**: behind a proxy that terminates TLS the request scheme stays `http` until
+  `TrustedProxiesMiddleware` trusts that proxy.
 - **Routing**: a placeholder value that violates its constraint once decoded, or decodes to NUL,
   makes the route not match (404).
 - **Auth**: a signed URL used with a method other than `GET`/`HEAD` must be signed for it
   (`sign($path, method: 'POST')`). Links signed before stay valid for `GET`; one that a form
   posts to has to be signed again.
 - **HttpClient**: `timeout` covers redirects too and must be above 0, as must `connectTimeout`.
+- **HttpClient**: a response body over 32 MiB throws `RequestException`; raise the limit with
+  `HttpClientConfig::$maxResponseSize`, or set it to `null` to turn it off.
+- **Cache**: `MemcachedCache::delete()` returns `false` when the server fails, as the PSR-16
+  contract asks, and `true` for a key that was not there.
 - **Telemetry**: span names use `HTTP` and `http.request.method` `_OTHER` for non-standard
   methods, per the OpenTelemetry HTTP conventions.
 - **I18n**: an explicit `locale` is matched against the supported locales (`en-GB` to `en`,
