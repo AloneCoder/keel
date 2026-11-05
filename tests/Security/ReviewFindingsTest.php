@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Keel\Tests\Security;
 
 use Keel\Auth\AuthConfig;
+use Keel\Auth\AuthMiddleware;
 use Keel\Auth\BearerTokenAuthenticator;
 use Keel\Auth\PrincipalResolver;
 use Keel\Cache\ArrayCache;
@@ -16,6 +17,8 @@ use Keel\Http\CallableHandler;
 use Keel\Http\ErrorResponseHooks;
 use Keel\Http\Exception\UnprocessableContentException;
 use Keel\Http\Middleware\SecurityHeadersMiddleware;
+use Keel\Http\Middleware\TrustedHostsConfig;
+use Keel\Http\Middleware\TrustedHostsMiddleware;
 use Keel\Http\Responder;
 use Keel\Idempotency\IdempotencyMiddleware;
 use Keel\Kernel\ExceptionHandlerMiddleware;
@@ -196,7 +199,7 @@ final class ReviewFindingsTest extends TestCase
 
     public function testGuessingTokensRunsIntoThePrincipalRateLimit(): void
     {
-        $client = $this->client();
+        $client = $this->clientWithRefusalLimit(3);
         for ($i = 0; $i < 3; $i++) {
             $client->get('/guarded', ['Authorization' => 'Bearer guess-' . $i])->assertProblem(401, 'Invalid or expired token');
         }
@@ -204,6 +207,97 @@ final class ReviewFindingsTest extends TestCase
 
         // The right guess gets the same answer: nothing tells it from the wrong ones.
         $client->get('/guarded', ['Authorization' => 'Bearer user-token'])->assertStatus(429);
+    }
+
+    /**
+     * @param list<class-string<MiddlewareInterface>> $middleware
+     */
+    private function clientWithRefusalLimit(int $limit, array $middleware = []): TestClient
+    {
+        return $this->client($middleware, static function (Definitions $definitions) use ($limit): void {
+            $definitions->instance(AuthConfig::class, new AuthConfig([BearerTokenAuthenticator::class], $limit));
+        });
+    }
+
+    public function testGuessingTokensIsLimitedBehindAuthMiddlewareToo(): void
+    {
+        $client = $this->clientWithRefusalLimit(2, [AuthMiddleware::class]);
+        $client->get('/guarded', ['Authorization' => 'Bearer guess-1'])->assertStatus(401);
+        $client->get('/guarded', ['Authorization' => 'Bearer guess-2'])->assertStatus(401);
+        $client->get('/guarded', ['Authorization' => 'Bearer guess-3'])->assertStatus(429)->assertHeader('RateLimit-Remaining', '0');
+        $client->get('/guarded', ['Authorization' => 'Bearer user-token'])->assertStatus(429);
+        $client->get('/guarded')->assertOk();
+    }
+
+    public function testAnIdempotencyKeyDoesNotGetPastTheGuessLimit(): void
+    {
+        $client = $this->clientWithRefusalLimit(2, [IdempotencyMiddleware::class]);
+        foreach (['a', 'b'] as $guess) {
+            $client->post('/pay', '{}', ['Idempotency-Key' => 'k' . $guess, 'Content-Type' => 'application/json', 'Authorization' => 'Bearer ' . $guess])->assertStatus(401);
+        }
+        $client->post('/pay', '{}', ['Idempotency-Key' => 'kc', 'Content-Type' => 'application/json', 'Authorization' => 'Bearer c'])->assertStatus(429);
+        $client->post('/pay', '{}', ['Idempotency-Key' => 'kd', 'Content-Type' => 'application/json', 'Authorization' => 'Bearer user-token'])->assertStatus(429);
+        self::assertSame(0, ReviewController::$charges);
+    }
+
+    public function testAKnownPrincipalKeepsWorkingWhileItsAddressIsLockedOut(): void
+    {
+        $client = $this->clientWithRefusalLimit(2, [AuthMiddleware::class]);
+        $client->get('/guarded', ['Authorization' => 'Bearer user-token'])->assertOk();
+
+        foreach (['a', 'b', 'c'] as $guess) {
+            $client->get('/guarded', ['Authorization' => 'Bearer ' . $guess]);
+        }
+
+        $client->get('/guarded', ['Authorization' => 'Bearer user-token'])->assertOk();
+        $client->get('/guarded', ['Authorization' => 'Bearer admin-token'])->assertStatus(429);
+    }
+
+    public function testRefusalLimitCanBeTurnedOffAndIsValidated(): void
+    {
+        $client = $this->clientWithRefusalLimit(1, [AuthMiddleware::class]);
+        $client->get('/guarded', ['Authorization' => 'Bearer a'])->assertStatus(401);
+        $client->get('/guarded', ['Authorization' => 'Bearer b'])->assertStatus(429);
+
+        $open = $this->client([AuthMiddleware::class], static function (Definitions $definitions): void {
+            $definitions->instance(AuthConfig::class, new AuthConfig([BearerTokenAuthenticator::class], null));
+        });
+        for ($i = 0; $i < 30; $i++) {
+            $open->get('/guarded', ['Authorization' => 'Bearer guess-' . $i])->assertStatus(401);
+        }
+
+        $this->expectException(\InvalidArgumentException::class);
+        new AuthConfig([], 0);
+    }
+
+    public function testClientsAreCountedPerIpv4AddressAndIpv6Network(): void
+    {
+        self::assertSame('unknown', RateLimiter::client(null));
+        self::assertSame('203.0.113.5', RateLimiter::client('203.0.113.5'));
+        self::assertSame('203.0.113.5', RateLimiter::client('::ffff:203.0.113.5'));
+        self::assertSame('2001:db8:1:2::/64', RateLimiter::client('2001:db8:1:2:aaaa::1'));
+        self::assertSame(RateLimiter::client('2001:db8:1:2:aaaa::1'), RateLimiter::client('2001:db8:1:2:ffff:ffff:ffff:ffff'));
+        self::assertNotSame(RateLimiter::client('2001:db8:1:2::1'), RateLimiter::client('2001:db8:1:3::1'));
+        self::assertSame('not-an-ip', RateLimiter::client('not-an-ip'));
+    }
+
+    public function testAnIpv6ClientCannotEscapeTheRateLimitWithinItsNetwork(): void
+    {
+        $client = $this->client()->withServer(['REMOTE_ADDR' => '2001:db8:1:2::1']);
+        for ($i = 1; $i <= 3; $i++) {
+            $client->withServer(['REMOTE_ADDR' => '2001:db8:1:2::' . dechex($i)])->get('/guarded')->assertOk();
+        }
+        $client->withServer(['REMOTE_ADDR' => '2001:db8:1:2:ffff::9'])->get('/guarded')->assertStatus(429);
+        $client->withServer(['REMOTE_ADDR' => '2001:db8:1:3::1'])->get('/guarded')->assertOk();
+    }
+
+    public function testRememberedKeysOfACounterStorage(): void
+    {
+        $limiter = new RateLimiter(new InMemoryCounters());
+        self::assertFalse($limiter->remembered('k'));
+        $limiter->remember('k', 60);
+        $limiter->remember('k', 60);
+        self::assertTrue($limiter->remembered('k'));
     }
 
     public function testValidTokensKeepTheirBucketBelowTheGuessLimitAndAnonymousRequestsLockNobodyOut(): void
@@ -243,6 +337,15 @@ final class ReviewFindingsTest extends TestCase
 
         $client->get('/nope')->assertStatus(404)->assertHeader('X-Content-Type-Options', 'nosniff')->assertHeader('X-Frame-Options', 'DENY');
         $client->post('/logout-fails')->assertStatus(500)->assertHeader('X-Content-Type-Options', 'nosniff');
+    }
+
+    public function testARefusalOfAMiddlewareInsideTheHeadersCarriesThemInTheDocumentedOrder(): void
+    {
+        $client = $this->client([SecurityHeadersMiddleware::class, TrustedHostsMiddleware::class], static function (Definitions $definitions): void {
+            $definitions->instance(TrustedHostsConfig::class, new TrustedHostsConfig(['app.test']));
+        });
+
+        $client->get('/guarded')->assertStatus(400)->assertHeader('X-Content-Type-Options', 'nosniff');
     }
 
     public function testLogoutThatEndsInAnExceptionStillLogsOut(): void
@@ -341,7 +444,7 @@ final class ReviewFindingsTest extends TestCase
     public function testPublicDisksRefuseExecutableNames(): void
     {
         $flysystem = new FlysystemStorage(new Filesystem(new LocalFilesystemAdapter($this->directory())), 'https://files.test');
-        foreach (['shell.php', 'a/shell.PHP7', 'x.php.png', 'page.phtm', 'page.shtml', 'run.cgi', '.htaccess', '.user.ini'] as $name) {
+        foreach (['shell.php', 'a/shell.PHP7', 'x.php.png', 'page.phtm', 'page.shtml', 'run.cgi', 'run.fcgi', 'run.pl', 'run.py', 'page.aspx', 'page.jsp', '.htaccess', '.user.ini', 'web.config'] as $name) {
             try {
                 $flysystem->write($name, 'x');
                 self::fail('flysystem wrote ' . $name);
@@ -404,7 +507,14 @@ final class ReviewFindingsTest extends TestCase
         } catch (UnprocessableContentException) {
         }
 
-        self::assertSame(2, $runs);
+        $middleware->process($request('nested')->withUploadedFiles(['doc' => [$upload('one')], 'photo' => [$upload('two')]]), $handler);
+        try {
+            $middleware->process($request('nested')->withUploadedFiles(['doc' => [$upload('two')], 'photo' => [$upload('one')]]), $handler);
+            self::fail('uploads swapped between fields were replayed');
+        } catch (UnprocessableContentException) {
+        }
+
+        self::assertSame(3, $runs);
     }
 
     public function testASignedCookieThatIsNoSessionIdStartsANewRedisSession(): void

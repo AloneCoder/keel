@@ -280,10 +280,10 @@ return new HttpConfig([
     HealthMiddleware::class,            // probes: any Host, never shed
     MetricsMiddleware::class,
     LoadSheddingMiddleware::class,
-    TrustedHostsMiddleware::class,
     ServerTimingMiddleware::class,      // measures everything below
     OpenApiMiddleware::class,           // before the strict CSP, its HTML page loads a script
-    SecurityHeadersMiddleware::class,
+    SecurityHeadersMiddleware::class,   // before what can refuse a request: its errors get the headers too
+    TrustedHostsMiddleware::class,
     CorsMiddleware::class,
     BodyLimitMiddleware::class,
     RequestIdMiddleware::class,

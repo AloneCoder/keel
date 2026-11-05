@@ -234,17 +234,25 @@ exhausted the guard answers 429 with `Retry-After`. Windows are fixed and aligne
 (`RateLimiter`), so up to twice the limit can pass around a window boundary; the client IP is
 what `TrustedProxiesMiddleware` established, so forwarded headers only count from trusted proxies.
 
-Counters are keyed by HTTP method, route pattern and subject (`GET|/search|ip:203.0.113.5`,
+An IPv6 client counts per /64, as it usually holds the whole network and could otherwise take a
+fresh address for every request. Counters are keyed by HTTP method, route pattern and subject (`GET|/search|ip:203.0.113.5`,
 `GET|/mine|principal:u1`), so two methods on one path and an IP that looks like a principal id
 never share a bucket. With `by: 'principal'` the guard authenticates the request itself when no
 principal was attached yet (no `AuthMiddleware`, or `#[Auth]` declared after `#[RateLimit]`):
 a request with credentials is always counted per principal, and only a truly anonymous request
-falls back to the IP. Refused credentials get 401 and count in a bucket of their own per IP with the
-same limit. Once it is used up, that IP gets 429 for the rest of the window before any credentials
-are looked at, valid ones included, so a right guess looks like a wrong one. This needs a
-`ReadableCounters` storage, as all the built-in ones are. A refusal earlier in the pipeline never
-reaches the guard: with `AuthMiddleware`, or `#[Auth]` declared before `#[RateLimit]`, it answers
-401 uncounted.
+falls back to the IP.
+
+Refused credentials are limited apart from all this, on every path that authenticates
+(`AuthMiddleware`, `#[Auth]`, `#[RateLimit]`, `IdempotencyMiddleware`): `AuthConfig::$refusalLimit`
+per `$refusalWindow` seconds (20 per 60 by default, `null` turns it off), counted per client IP, for
+IPv6 per /64. Past the limit that IP gets 429 for the rest of the window, also with valid
+credentials, so a right guess looks like a wrong one. A principal that authenticated from that IP in
+the last hour, before the limit was reached, keeps working, so one bad client behind a shared address
+does not lock out the others already there; a client new to that address waits out the window. Place
+`TrustedProxiesMiddleware` first behind a proxy, or all clients share the proxy's address. This needs a
+`ReadableCounters` storage, as all the built-in ones are. With a plain `CounterStorage` only
+wrong credentials get 429, so the answers still tell a right guess from a wrong one. While the
+counters cannot be reached, wrong credentials get 429 and valid ones pass.
 
 Counters live in a `CounterStorage`: APCu when the extension is loaded (shared by every worker of
 the server), otherwise the memory of the current process. `RedisCounters` puts them on Redis

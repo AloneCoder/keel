@@ -189,15 +189,31 @@ final class IdempotencyMiddleware implements MiddlewareInterface
     private static function form(ServerRequestInterface $request): string
     {
         $fields = $request->getParsedBody();
-        $files = [];
-        $uploads = $request->getUploadedFiles();
-        array_walk_recursive($uploads, static function (mixed $file, int|string $name) use (&$files): void {
-            if ($file instanceof UploadedFileInterface) {
-                $files[] = [$name, $file->getClientFilename(), $file->getSize(), $file->getError() === \UPLOAD_ERR_OK ? self::digest($file) : null];
-            }
-        });
+        $files = self::files($request->getUploadedFiles());
 
         return !is_array($fields) || $fields === [] ? ($files === [] ? '' : serialize($files)) : serialize([$fields, $files]);
+    }
+
+    /**
+     * What each upload is, under its whole field name: doc[0] is not photo[0].
+     *
+     * @param array<mixed> $uploads
+     *
+     * @return list<array{string, string|null, int|null, string|null}>
+     */
+    private static function files(array $uploads, string $parent = ''): array
+    {
+        $files = [];
+        foreach ($uploads as $name => $upload) {
+            $field = $parent === '' ? (string) $name : $parent . '[' . $name . ']';
+            if (is_array($upload)) {
+                array_push($files, ...self::files($upload, $field));
+            } elseif ($upload instanceof UploadedFileInterface) {
+                $files[] = [$field, $upload->getClientFilename(), $upload->getSize(), $upload->getError() === \UPLOAD_ERR_OK ? self::digest($upload) : null];
+            }
+        }
+
+        return $files;
     }
 
     private static function digest(UploadedFileInterface $file): string

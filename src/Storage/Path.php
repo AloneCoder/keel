@@ -12,11 +12,13 @@ namespace Keel\Storage;
  */
 final class Path
 {
-    private const string EXECUTABLE = '/\.(?:php\d*|phtml?|pht|phar|phps|shtml?|cgi)(?:\.|$)|^\.(?:htaccess|user\.ini)$/i';
+    private const string EXECUTABLE = '/\.(?:php\d*|phtml?|pht|phar|phps|shtml?|cgi|fcgi|pl|py|rb|asp|aspx|jsp|jspx|cfm)(?:\.|$)|^(?:\.htaccess|\.user\.ini|web\.config)$/i';
 
     /**
      * Whether a web server serving this file might run it (".php", also "x.php.png" for Apache's
-     * AddHandler) or obey it (.htaccess, .user.ini). Disks with a public URL refuse such names.
+     * AddHandler) or obey it (.htaccess, .user.ini, web.config). Disks with a public URL refuse such
+     * names. It is a list of what servers commonly map, not a guarantee: a server mapping another
+     * extension to a handler stays the deployment's to rule out.
      * Not .html or .svg: they run in the visitor's browser, which is for the application to rule
      * out (#[File] with an allowlist, a separate domain for user uploads).
      */

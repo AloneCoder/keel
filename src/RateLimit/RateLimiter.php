@@ -51,4 +51,45 @@ final class RateLimiter
             ? new RateLimitResult(false, $limit, 0, $start + $window - $now)
             : null;
     }
+
+    /**
+     * Notes the key for $ttl seconds; nothing on a storage that cannot be read. Only the first call
+     * writes, so this costs one read on a hot path.
+     */
+    public function remember(string $key, int $ttl): void
+    {
+        if ($this->storage instanceof ReadableCounters && $this->storage->current($key) === 0) {
+            $this->storage->increment($key, $ttl);
+        }
+    }
+
+    /**
+     * Whether the key was noted and has not expired. Also true while the storage cannot be reached
+     * (ReadableCounters::current() then answers PHP_INT_MAX), so an outage of the counters does not
+     * turn every authenticated request away.
+     */
+    public function remembered(string $key): bool
+    {
+        return $this->storage instanceof ReadableCounters && $this->storage->current($key) > 0;
+    }
+
+    /**
+     * The bucket of a client address: an IPv6 client usually holds a whole /64, so a bucket per
+     * address would give it a fresh one for every request. An IPv4-mapped address is its IPv4 one.
+     */
+    public static function client(?string $ip): string
+    {
+        if ($ip === null) {
+            return 'unknown';
+        }
+        $packed = @inet_pton($ip);
+        if ($packed === false || strlen($packed) !== 16) {
+            return $ip;
+        }
+        if (str_starts_with($packed, str_repeat("\0", 10) . "\xff\xff")) {
+            return (string) inet_ntop(substr($packed, 12));
+        }
+
+        return inet_ntop(substr($packed, 0, 8) . str_repeat("\0", 8)) . '/64';
+    }
 }

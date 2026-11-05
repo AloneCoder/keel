@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Keel\Cache;
 
+use Keel\Storage\PrivateDirectory;
+
 /**
  * One serialized file per entry under a directory, written atomically; shared by every worker
  * on the host. Expired files are removed when read and by a probabilistic sweep on write.
@@ -151,34 +153,7 @@ final class FileCache extends AbstractCache
      */
     private function verify(): void
     {
-        if (is_link($this->directory)) {
-            throw new \RuntimeException(sprintf('Cache directory "%s" is a symlink', $this->directory));
-        }
-        $mode = @fileperms($this->directory);
-        if ($mode === false) {
-            return;
-        }
-        if (($mode & 0o002) !== 0) {
-            throw new \RuntimeException(sprintf('Cache directory "%s" is writable by everyone; use a private directory', $this->directory));
-        }
-        // Its owner can write into it whatever the mode says: another user who created it first
-        // (a predictable name in a shared /tmp) would plant serialized objects.
-        $owner = @fileowner($this->directory);
-        if ($owner !== self::uid() && ($owner !== 0 || ($mode & 0o020) !== 0)) {
-            throw new \RuntimeException(sprintf('Cache directory "%s" is owned by someone else; use a private directory', $this->directory));
-        }
-        // Whoever can rename entries of the parent can replace this directory, whatever its own mode.
-        $parent = @fileperms(dirname($this->directory));
-        if ($parent !== false && ($parent & 0o002) !== 0 && ($parent & 0o1000) === 0) {
-            throw new \RuntimeException(sprintf('Cache directory "%s" is inside a directory anyone can rename it in; use a private directory', $this->directory));
-        }
-    }
-
-    private static function uid(): int
-    {
-        $uid = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
-
-        return $uid === false ? -1 : $uid;
+        PrivateDirectory::assert($this->directory, 'Cache directory');
     }
 
     /**

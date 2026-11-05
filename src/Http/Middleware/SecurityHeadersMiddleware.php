@@ -11,7 +11,9 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * Adds the headers of SecurityHeadersConfig to every response, error responses included: HSTS (on HTTPS requests only, so
+ * Adds the headers of SecurityHeadersConfig to every response that passes through it, also when
+ * the request ends in an exception further in; an exception raised before this middleware runs
+ * gets none, so place it before middleware that can refuse a request. HSTS (on HTTPS requests only, so
  * place TrustedProxiesMiddleware before it behind a TLS-terminating proxy), Content-Security-Policy,
  * X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy and the
  * Cross-Origin policies. A header the response already carries is left alone, so a handler or an

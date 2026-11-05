@@ -281,10 +281,10 @@ return new HttpConfig([
     HealthMiddleware::class,            // пробы: любой Host, никогда не сбрасываются
     MetricsMiddleware::class,
     LoadSheddingMiddleware::class,
-    TrustedHostsMiddleware::class,
     ServerTimingMiddleware::class,      // меряет всё, что ниже
     OpenApiMiddleware::class,           // до строгого CSP: его HTML-страница грузит скрипт
-    SecurityHeadersMiddleware::class,
+    SecurityHeadersMiddleware::class,   // до того, что может отказать в запросе: его ошибки тоже получат заголовки
+    TrustedHostsMiddleware::class,
     CorsMiddleware::class,
     BodyLimitMiddleware::class,
     RequestIdMiddleware::class,

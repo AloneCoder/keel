@@ -54,8 +54,9 @@ Paths are relative and `/`-separated; `..`, absolute paths, drive letters and NU
 refused (`StorageException`), so a path built from request data cannot leave the root. Missing
 directories are created on write. A disk with a `url` may be served by the web server, so it
 refuses names the server could execute or obey, whatever the driver: `.php`, `.phtml`, `.phtm`,
-`.phar` (also inside a name, `x.php.png`, which Apache's `AddHandler` runs), `.shtml`, `.cgi`,
-`.htaccess` and `.user.ini`. Take the extension of
+`.phar` (also inside a name, `x.php.png`, which Apache's `AddHandler` runs), `.shtml`, `.cgi`, `.fcgi`,
+`.pl`, `.py`, `.rb`, `.asp`, `.aspx`, `.jsp`, `.jspx`, `.cfm`, `.htaccess`, `.user.ini` and `web.config`.
+This covers what servers commonly map, not every handler a server can be set up with. Take the extension of
 an upload from its checked content (`File::sniff()`), never from the client's file name: a
 `.html` or `.svg` from a client is stored XSS on your own origin.
 

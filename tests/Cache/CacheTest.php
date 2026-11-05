@@ -134,7 +134,7 @@ final class CacheTest extends TestCase
             new FileCache($base . '/link')->set('k', 'v');
             self::fail('a symlinked directory is refused');
         } catch (\RuntimeException $e) {
-            self::assertStringContainsString('symlink', $e->getMessage());
+            self::assertStringContainsString('symbolic link', $e->getMessage());
         }
     }
 

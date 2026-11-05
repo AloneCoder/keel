@@ -20,34 +20,48 @@ listed under Changed. No public method was removed or renamed.
   the key was scoped to changed on every request, so a retry ran the handler again (since 1.5.1).
   A cookie session now keeps its id in the cookie until `regenerate()`.
 - **Idempotency**: the fingerprint left out multipart fields and files, which PHP keeps out of the
-  raw body, so another form under the same key got the old response instead of 422.
-- **RateLimit**: `#[RateLimit(by: 'principal')]` never counted refused credentials, so guessing
-  tokens was unlimited. They now count in a bucket of their own per IP; once it is used up the guard
-  answers 429 before looking at credentials, so a right guess looks like a wrong one. All built-in
-  counters support this through the new `ReadableCounters`; a custom `CounterStorage` has to
-  implement it too.
+  raw body, so another form under the same key got the old response instead of 422. Files count
+  under their whole field name, so `doc[0]` and `photo[0]` swapped are another form.
+- **Auth**: refused credentials were never counted, so guessing tokens was unlimited. `Authentication`
+  now counts them on every path, per client IP and for IPv6 per /64: past
+  `AuthConfig::$refusalLimit` (20 per 60 seconds by default) the answer is 429, valid credentials
+  included, so a right guess looks like a wrong one. Principals that authenticated from that IP before
+  the limit was reached keep working. All built-in counters support this through the new
+  `ReadableCounters`; a custom `CounterStorage` has to implement it too.
+- **RateLimit**: `#[RateLimit]` counted an IPv6 client per address, so taking a new address within its
+  /64 for every request escaped the limit. It now counts per /64.
 - **HttpClient**: `X-Api-Key`, `Api-Key`, `X-Auth-Token` and `X-Access-Token` followed a redirect to
   another origin. They now stay behind like `Authorization`; `HttpClientConfig::$credentialHeaders`
   adds your own.
 - **Http**: an exception skipped what a middleware does after the handler, so error responses had
   no security headers and a logout that ended in an exception left the session alive. Both are
   applied now, through the new `ErrorResponseHooks`. Other writes of a failed request stay dropped.
+  An exception raised before `SecurityHeadersMiddleware` runs still gets no headers: place it before
+  `TrustedHostsMiddleware` and the like, as the documented order now does.
 - **Cache, Session**: `FileCache` and `FileStorage` checked their directory once per worker and
   never its parent, so a directory swapped later was trusted, and `FileCache` unserializes with every
   class allowed. They now check on every access and refuse a parent that is world-writable without
   the sticky bit. The default `FileCache` directory moved to `<temp>/keel-cache-<hash>`.
 - **Storage**: `FlysystemStorage` with a URL accepted executable names, unlike `LocalStorage`. Both
-  now refuse them, and the list gained `.phtm`, `.shtml`, `.shtm` and `.cgi`.
+  now refuse them, and the list gained `.phtm`, `.shtml`, `.shtm`, `.cgi`, `.fcgi`, `.pl`, `.py`, `.rb`,
+  `.asp`, `.aspx`, `.jsp`, `.jspx`, `.cfm` and `web.config`.
 - **Session**: `RedisStorage` answered 500 to a validly signed cookie that holds no session id, such
   as one left from the cookie storage. It now starts a new session.
 
 ### Changed
 
-- With `#[RateLimit(by: 'principal')]`, an IP that used up its refused attempts gets 429 for the
-  rest of the window, even with a valid token.
+- An IP that used up its refused attempts gets 429 for the rest of the window on any authenticating
+  route, even with a valid token, unless that principal already authenticated from it. Set
+  `AuthConfig::$refusalLimit` to change the limit, `null` to turn it off. Behind a proxy this needs
+  `TrustedProxiesMiddleware`, or all clients share one address.
+- All IPv6 clients of one /64 share a `#[RateLimit]` bucket, and an IPv4-mapped address shares the
+  bucket of its IPv4 address.
+- `Authentication` takes a `RateLimiter`; one built by hand without it does not count refusals.
 - A public `FlysystemStorage` refuses `.php` and the like on every adapter, S3 included.
 - A `FileCache` or `FileStorage` directory inside a world-writable parent without the sticky bit
-  now raises `RuntimeException`.
+  now raises `RuntimeException`, on first access rather than at boot. That includes the defaults under
+  the system temp dir when it has no sticky bit, as a Kubernetes `emptyDir` mounted on `/tmp` has not:
+  configure private directories or `chmod +t` it. `keel:doctor` reports this.
 - Cookie sessions grow by about 50 bytes (the id), which counts against the 4,000-byte limit.
   Cookies written by earlier versions stay valid.
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Keel\Session;
 
+use Keel\Storage\PrivateDirectory;
+
 /**
  * One JSON file per session with a lazily run, probabilistic garbage collection of expired files.
  *
@@ -124,28 +126,7 @@ final class FileStorage implements SessionStorageInterface, SessionExpiry
      */
     private function verify(): void
     {
-        if (is_link($this->directory)) {
-            throw new \RuntimeException(sprintf('Session directory "%s" is a symbolic link; refusing to write through it', $this->directory));
-        }
-        $mode = @fileperms($this->directory);
-        $owner = @fileowner($this->directory);
-        if ($mode === false || $owner === false) {
-            return;
-        }
-        if (($mode & 0o002) !== 0 || ($owner !== self::uid() && ($owner !== 0 || ($mode & 0o020) !== 0))) {
-            throw new \RuntimeException(sprintf('Session directory "%s" is writable by everyone or owned by someone else; use a private directory', $this->directory));
-        }
-        $parent = @fileperms(dirname($this->directory));
-        if ($parent !== false && ($parent & 0o002) !== 0 && ($parent & 0o1000) === 0) {
-            throw new \RuntimeException(sprintf('Session directory "%s" is inside a directory anyone can rename it in; use a private directory', $this->directory));
-        }
-    }
-
-    private static function uid(): int
-    {
-        $uid = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
-
-        return $uid === false ? -1 : $uid;
+        PrivateDirectory::assert($this->directory, 'Session directory');
     }
 
     private function file(string $id): ?string

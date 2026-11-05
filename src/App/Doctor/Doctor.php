@@ -22,6 +22,7 @@ use Keel\Runtime\MemoryGuard;
 use Keel\Runtime\RoadRunnerRuntime;
 use Keel\Runtime\Runtime;
 use Keel\Session\SessionConfig;
+use Keel\Storage\PrivateDirectory;
 use Spiral\RoadRunner\Http\PSR7Worker;
 
 /**
@@ -327,6 +328,12 @@ final class Doctor
         $cache = $this->app->configs[CacheConfig::class] ?? null;
         if ($cache instanceof CacheConfig && $cache->directory !== null && in_array($cache->driver, ['file', 'auto'], true)) {
             $findings[] = self::directory('storage', 'cache directory', $cache->directory);
+        }
+
+        $inTemp = ($session instanceof SessionConfig && $session->storage === 'file' && $session->filePath === null)
+            || ($cache instanceof CacheConfig && $cache->driver === 'file' && $cache->directory === null);
+        if ($inTemp && PrivateDirectory::replaceable(sys_get_temp_dir() . '/keel')) {
+            $findings[] = Finding::failure('storage', sprintf('the system temp dir %s is world-writable without the sticky bit: the default file cache and session directories raise RuntimeException on every access', sys_get_temp_dir()), 'Configure private directories (CacheConfig::$directory, SessionConfig::$filePath) or set the sticky bit (chmod +t).');
         }
 
         return $findings;
