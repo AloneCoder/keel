@@ -251,8 +251,9 @@ the last hour, before the limit was reached, keeps working, so one bad client be
 does not lock out the others already there; a client new to that address waits out the window. Place
 `TrustedProxiesMiddleware` first behind a proxy, or all clients share the proxy's address. This needs a
 `ReadableCounters` storage, as all the built-in ones are. With a plain `CounterStorage` only
-wrong credentials get 429, so the answers still tell a right guess from a wrong one. While the
-counters cannot be reached, wrong credentials get 429 and valid ones pass.
+wrong credentials get 429, so the answers still tell a right guess from a wrong one. If a readable
+counter store is unavailable, every request carrying credentials gets 429: allowing only valid
+credentials through would expose a credential oracle.
 
 Counters live in a `CounterStorage`: APCu when the extension is loaded (shared by every worker of
 the server), otherwise the memory of the current process. `RedisCounters` puts them on Redis

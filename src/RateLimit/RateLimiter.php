@@ -64,13 +64,18 @@ final class RateLimiter
     }
 
     /**
-     * Whether the key was noted and has not expired. Also true while the storage cannot be reached
-     * (ReadableCounters::current() then answers PHP_INT_MAX), so an outage of the counters does not
-     * turn every authenticated request away.
+     * Whether the key was noted and has not expired. A readable storage signals an unavailable
+     * counter with PHP_INT_MAX; that is not a remembered key, because admitting it would turn an
+     * outage into a credential oracle (valid credentials would pass while invalid ones get 429).
      */
     public function remembered(string $key): bool
     {
-        return $this->storage instanceof ReadableCounters && $this->storage->current($key) > 0;
+        if (!$this->storage instanceof ReadableCounters) {
+            return false;
+        }
+        $value = $this->storage->current($key);
+
+        return $value > 0 && $value !== \PHP_INT_MAX;
     }
 
     /**

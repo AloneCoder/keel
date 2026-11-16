@@ -40,7 +40,7 @@ listed under Changed. No public method was removed or renamed.
   `TrustedHostsMiddleware` and the like, as the documented order now does.
 - **Cache, Session**: `FileCache` and `FileStorage` checked their directory once per worker and
   never its parent, so a directory swapped later was trusted, and `FileCache` unserializes with every
-  class allowed. They now check on every access and refuse a parent that is world-writable without
+  class allowed. They now check on every access and refuse a world-writable ancestor without
   the sticky bit. The default `FileCache` directory moved to `<temp>/keel-cache-<hash>`.
 - **Storage**: `FlysystemStorage` with a URL accepted executable names, unlike `LocalStorage`. Both
   now refuse them, and the list gained `.phtm`, `.shtml`, `.shtm`, `.cgi`, `.fcgi`, `.pl`, `.py`, `.rb`,
@@ -58,7 +58,7 @@ listed under Changed. No public method was removed or renamed.
   bucket of its IPv4 address.
 - `Authentication` takes a `RateLimiter`; one built by hand without it does not count refusals.
 - A public `FlysystemStorage` refuses `.php` and the like on every adapter, S3 included.
-- A `FileCache` or `FileStorage` directory inside a world-writable parent without the sticky bit
+- A `FileCache` or `FileStorage` directory below a world-writable ancestor without the sticky bit
   now raises `RuntimeException`, on first access rather than at boot. That includes the defaults under
   the system temp dir when it has no sticky bit, as a Kubernetes `emptyDir` mounted on `/tmp` has not:
   configure private directories or `chmod +t` it. `keel:doctor` reports this.

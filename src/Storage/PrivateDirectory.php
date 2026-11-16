@@ -12,8 +12,10 @@ final class PrivateDirectory
 {
     /**
      * Refuses a symlink, a world-writable directory, one owned by another user (root only when not
-     * group-writable) and one inside a world-writable directory without the sticky bit. A directory
-     * that does not exist yet passes. No result is kept, as it can be swapped while a worker runs.
+     * group-writable) and one below a world-writable ancestor without the sticky bit. Ancestors are
+     * checked by their canonical path, so an operating system's own symlink (such as /var on macOS)
+     * does not weaken or prevent the check. A directory that does not exist yet passes. No result is
+     * kept, as it can be swapped while a worker runs.
      *
      * @param string $label what the directory is for, at the start of the message ("Cache directory")
      *
@@ -24,6 +26,7 @@ final class PrivateDirectory
         if (is_link($directory)) {
             throw new \RuntimeException(sprintf('%s "%s" is a symbolic link; refusing to use it', $label, $directory));
         }
+        $directory = realpath($directory) ?: $directory;
         $mode = @fileperms($directory);
         $owner = @fileowner($directory);
         if ($mode === false || $owner === false) {
@@ -35,19 +38,28 @@ final class PrivateDirectory
             throw new \RuntimeException(sprintf('%s "%s" is writable by everyone or owned by someone else; use a private directory', $label, $directory));
         }
         if (self::replaceable($directory)) {
-            throw new \RuntimeException(sprintf('%s "%s" is inside a directory anyone can rename it in; configure a private directory, or set the sticky bit on the parent (chmod +t)', $label, $directory));
+            throw new \RuntimeException(sprintf('%s "%s" is below a directory anyone can rename it in; configure a private directory, or set the sticky bit (chmod +t)', $label, $directory));
         }
     }
 
     /**
-     * Whether others can rename entries of the parent, and so replace this directory whatever its
-     * own mode: the parent is world-writable without the sticky bit.
+     * Whether others can replace this directory through any ancestor, regardless of its own mode:
+     * a world-writable ancestor without the sticky bit lets them rename the next path component.
      */
     public static function replaceable(string $directory): bool
     {
-        $parent = @fileperms(dirname($directory));
-
-        return $parent !== false && ($parent & 0o002) !== 0 && ($parent & 0o1000) === 0;
+        $parent = dirname($directory);
+        while (true) {
+            $mode = @fileperms($parent);
+            if ($mode !== false && ($mode & 0o002) !== 0 && ($mode & 0o1000) === 0) {
+                return true;
+            }
+            $next = dirname($parent);
+            if ($next === $parent) {
+                return false;
+            }
+            $parent = $next;
+        }
     }
 
     private static function uid(): int

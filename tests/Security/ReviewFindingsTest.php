@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Keel\Tests\Security;
 
 use Keel\Auth\AuthConfig;
+use Keel\Auth\Authentication;
 use Keel\Auth\AuthMiddleware;
 use Keel\Auth\BearerTokenAuthenticator;
 use Keel\Auth\PrincipalResolver;
@@ -12,6 +13,7 @@ use Keel\Cache\ArrayCache;
 use Keel\Cache\CacheConfig;
 use Keel\Cache\CacheProvider;
 use Keel\Cache\FileCache;
+use Keel\Container\ContainerInterface;
 use Keel\Container\Definitions;
 use Keel\Http\CallableHandler;
 use Keel\Http\ErrorResponseHooks;
@@ -26,6 +28,7 @@ use Keel\Kernel\Kernel;
 use Keel\RateLimit\CounterStorage;
 use Keel\RateLimit\InMemoryCounters;
 use Keel\RateLimit\RateLimiter;
+use Keel\RateLimit\ReadableCounters;
 use Keel\Session\CookieSigner;
 use Keel\Session\CookieStorage;
 use Keel\Session\FileStorage;
@@ -300,6 +303,56 @@ final class ReviewFindingsTest extends TestCase
         self::assertTrue($limiter->remembered('k'));
     }
 
+    public function testCounterOutageDoesNotRevealValidCredentials(): void
+    {
+        $unavailable = new class implements ReadableCounters {
+            public function increment(string $key, int $ttl): int
+            {
+                return \PHP_INT_MAX;
+            }
+
+            public function current(string $key): int
+            {
+                return \PHP_INT_MAX;
+            }
+        };
+        $authenticator = new BearerTokenAuthenticator(new Tokens());
+        $authenticators = new class ($authenticator) implements ContainerInterface {
+            public function __construct(private readonly BearerTokenAuthenticator $authenticator) {}
+
+            public function get(string $id): mixed
+            {
+                if ($id === BearerTokenAuthenticator::class) {
+                    return $this->authenticator;
+                }
+                throw new \RuntimeException('Unexpected service ' . $id);
+            }
+
+            public function has(string $id): bool
+            {
+                return $id === BearerTokenAuthenticator::class;
+            }
+
+            public function tagged(string $tag): array
+            {
+                return [];
+            }
+
+            public function reset(): void {}
+        };
+        $authentication = new Authentication(
+            $authenticators,
+            new AuthConfig([BearerTokenAuthenticator::class]),
+            new RateLimiter($unavailable),
+        );
+        $client = $this->client([AuthMiddleware::class], static function (Definitions $definitions) use ($authentication): void {
+            $definitions->instance(Authentication::class, $authentication);
+        });
+
+        $client->get('/guarded', ['Authorization' => 'Bearer guess'])->assertStatus(429);
+        $client->get('/guarded', ['Authorization' => 'Bearer user-token'])->assertStatus(429);
+    }
+
     public function testValidTokensKeepTheirBucketBelowTheGuessLimitAndAnonymousRequestsLockNobodyOut(): void
     {
         $client = $this->client();
@@ -430,6 +483,44 @@ final class ReviewFindingsTest extends TestCase
         $cache = new FileCache($root . '/cache');
         self::assertTrue($cache->set('k', 'v'));
         self::assertSame('v', $cache->get('k'));
+    }
+
+    public function testCacheAndSessionDirectoriesInAWorldWritableAncestorAreRefused(): void
+    {
+        $root = $this->directory();
+        $unsafe = $root . '/unsafe';
+        mkdir($unsafe . '/private', 0o700, true);
+        chmod($unsafe, 0o777);
+        if ((fileperms($unsafe) & 0o002) === 0) {
+            self::markTestSkipped('filesystem does not keep world-writable mode bits');
+        }
+
+        try {
+            new FileCache($unsafe . '/private/cache')->set('k', 'v');
+            self::fail('the cache accepted a directory whose ancestor anyone can replace');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('below a directory anyone can rename', $e->getMessage());
+        }
+
+        try {
+            new FileStorage($unsafe . '/private/sessions')->write(str_repeat('a', 40), [], 60);
+            self::fail('the session storage accepted a directory whose ancestor anyone can replace');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('below a directory anyone can rename', $e->getMessage());
+        }
+    }
+
+    public function testDirectoriesBehindASymbolicLinkCheckTheirCanonicalAncestors(): void
+    {
+        $root = $this->directory();
+        $unsafe = $root . '/unsafe';
+        mkdir($unsafe . '/private', 0o700, true);
+        chmod($unsafe, 0o777);
+        symlink($unsafe . '/private', $root . '/link');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('below a directory anyone can rename');
+        new FileCache($root . '/link/cache')->set('k', 'v');
     }
 
     public function testDefaultFileCacheDirectorySitsDirectlyInTheTempDir(): void
